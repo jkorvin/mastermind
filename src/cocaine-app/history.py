@@ -147,7 +147,7 @@ class GroupNodeBackendsSetRecord(GroupStateRecord):
     def __init__(self, set, timestamp=None, type=GroupStateRecord.HISTORY_RECORD_AUTOMATIC):
         super(GroupNodeBackendsSetRecord, self).__init__(timestamp, type)
         self.set = GroupNodeBackendsSet(
-            nbr if isinstance(nbr, GroupNodeBackendRecord) else GroupNodeBackendRecord(**nbr)
+            [nbr] if isinstance(nbr, GroupNodeBackendRecord) else GroupNodeBackendRecord(**nbr)
             for nbr in set
         )
 
