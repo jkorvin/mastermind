@@ -1,0 +1,7 @@
+{
+    "slave": "~/work/mastermind/src/cocaine-app/inventory_worker.py",
+    "environment": {
+        "PYTHONPATH": "~/work/mastermind/src/python-mastermind/src",
+        "PYTHONDONTWRITEBYTECODE": ""
+    }
+}

@@ -1,0 +1,7 @@
+{
+    "slave" : "/home/jonny-k/work/mastermind/src/cocaine-app/__init__.py",
+    "environment": {
+        "PYTHONPATH": "/home/jonny-k/work/mastermind/src/python-mastermind/src",
+        "PYTHONDONTWRITEBYTECODE": ""
+    }
+}
