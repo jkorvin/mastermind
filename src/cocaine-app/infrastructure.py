@@ -337,11 +337,11 @@ class Infrastructure(object):
 
         New record is not allowed to add "no couple" record to history.
         If group is new and uncoupled such record should be provided by uncoupled group
-        init script (not implemeted at the time).
+        init script (not implemented at the time).
         In case couple is being broken "no couple" record of non-automatic type creation
         should be provided by the action-performing code.
 
-        The worlflow is following:
+        The workflow is following:
             1) if group's current couple differs from the one set in the most recent
             history record create a new couple record with current group's couple;
             2) if group's current couple is <None>, new record should not be created.
@@ -360,8 +360,7 @@ class Infrastructure(object):
             group_history.couples and group_history.couples[-1] or
             GroupCoupleRecord(couple=())
         )
-
-        if history_couple and history_couple != storage_couple:
+        if history_couple != storage_couple:
             logger.info(
                 'Group {} couple does not match, last state: {}, '
                 'current state: {}'.format(
@@ -505,6 +504,34 @@ class Infrastructure(object):
             new_nodes=GroupNodeBackendsSetRecord(set=node_backends_set),
             record_type=record_type or GroupStateRecord.HISTORY_RECORD_MANUAL
         )
+
+    def couple_break(self, couple_as_tuple, record_type=None):
+        foreign_group_ids = []
+        details = []
+
+        for group_id in couple_as_tuple:
+            group_history = self.get_group_history(group_id)
+
+            if len(group_history.couples) == 0 or group_history.couples[-1].couple != couple_as_tuple:
+                if len(group_history.couples) == 0:
+                    details.append('group {0} has no couple in history'.format(group_id))
+                else:
+                    details.append('group {0} has coupled with {1} in history'.format(
+                        group_id, group_history.couples[-1].couple
+                    ))
+                foreign_group_ids.append(group_id)
+                continue
+
+            self._update_group(
+                group_history=group_history,
+                new_couple=GroupCoupleRecord(couple=()),
+                record_type=record_type or GroupStateRecord.HISTORY_RECORD_MANUAL
+            )
+
+        if foreign_group_ids:
+            raise RuntimeError('Groups {0} was not part of the couple {1}. Details: {2}'.format(
+                foreign_group_ids, couple_as_tuple, '; '.join(details)
+            ))
 
     def move_group_cmd(self,
                        src_host,
