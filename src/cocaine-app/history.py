@@ -233,7 +233,7 @@ class GroupCoupleRecord(GroupStateRecord):
     """
     def __init__(self, couple, timestamp=None, type=GroupStateRecord.HISTORY_RECORD_AUTOMATIC):
         super(GroupCoupleRecord, self).__init__(timestamp, type)
-        self.couple = couple
+        self.couple = tuple(couple)
 
     def __ne__(self, other):
         return not self == other
@@ -254,6 +254,10 @@ class GroupCoupleRecord(GroupStateRecord):
             ts=self.timestamp,
             type=self.type
         )
+
+    @property
+    def couple_str(self):
+        return ':'.join(self.couple)
 
 
 class GroupHistoryNotFoundError(Exception):

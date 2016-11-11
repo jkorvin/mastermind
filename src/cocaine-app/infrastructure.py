@@ -217,6 +217,10 @@ class Infrastructure(object):
             if group_history.group_id not in storage.groups:
                 continue
             group = storage.groups[group_history.group_id]
+
+            # this loop responsible only for removing excess node_backend's,
+            # since adding node_backend's will proceed automatically
+            # during mastermind periodical updates
             for node_backends_set in group_history.nodes:
                 # top threshold is checked due to mongo optimization: using bottom threshold only
                 # leads to mongo using index interval [<bottom_threshold>, inf+], which matches a
@@ -245,6 +249,37 @@ class Infrastructure(object):
                         )
                         group.remove_node_backend(nb)
                         group.update_status_recursive()
+
+            # this loop responsible only for destroying already broken couple by other mastermind's
+            # state of groups will update automatically during function .destroy() of couple
+            previous_couple = None
+            for couple_record in group_history.couples:
+                if (
+                    not self._sync_ts <= couple_record.timestamp < new_ts or
+                    couple_record.type not in types_to_sync or
+                    previous_couple == couple_record.couple_str
+                ):
+                    previous_couple = couple_record.couple_str
+                    continue
+
+                if previous_couple is None:
+                    previous_couple = group.couple
+
+                if previous_couple:
+                    if previous_couple not in storage.couples:
+                        logger.info(
+                            'Could not find previous couple {} for group {} in storage'.format(
+                                couple_record.couple_str, group
+                            )
+                        )
+                    else:
+                        logger.info('Breaking couple {} due to manual couple break'.format(
+                            previous_couple
+                        ))
+                        storage.couples[previous_couple].destroy()
+
+                previous_couple = couple_record.couple_str
+
         self._sync_ts = new_ts
 
     def update_group_history(self, group):
@@ -337,11 +372,11 @@ class Infrastructure(object):
 
         New record is not allowed to add "no couple" record to history.
         If group is new and uncoupled such record should be provided by uncoupled group
-        init script (not implemeted at the time).
+        init script (not implemented at the time).
         In case couple is being broken "no couple" record of non-automatic type creation
         should be provided by the action-performing code.
 
-        The worlflow is following:
+        The workflow is following:
             1) if group's current couple differs from the one set in the most recent
             history record create a new couple record with current group's couple;
             2) if group's current couple is <None>, new record should not be created.
@@ -360,8 +395,7 @@ class Infrastructure(object):
             group_history.couples and group_history.couples[-1] or
             GroupCoupleRecord(couple=())
         )
-
-        if history_couple and history_couple != storage_couple:
+        if history_couple != storage_couple:
             logger.info(
                 'Group {} couple does not match, last state: {}, '
                 'current state: {}'.format(
@@ -505,6 +539,19 @@ class Infrastructure(object):
             new_nodes=GroupNodeBackendsSetRecord(set=node_backends_set),
             record_type=record_type or GroupStateRecord.HISTORY_RECORD_MANUAL
         )
+
+    def uncouple_groups(self, group_ids, record_type=None):
+        """
+        Create new record "no couple" for groups histories.
+        """
+        for group_id in group_ids:
+            group_history = self.get_group_history(group_id)
+
+            self._update_group(
+                group_history=group_history,
+                new_couple=GroupCoupleRecord(couple=()),
+                record_type=record_type or GroupStateRecord.HISTORY_RECORD_MANUAL
+            )
 
     def move_group_cmd(self,
                        src_host,

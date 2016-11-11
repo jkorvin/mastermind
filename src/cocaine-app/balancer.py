@@ -1126,7 +1126,8 @@ class Balancer(object):
 
         with sync_manager.lock(self.CLUSTER_CHANGES_LOCK, blocking=False):
 
-            couple_str = ':'.join(map(str, sorted(request[0], key=lambda x: int(x))))
+            group_ids = request[0]
+            couple_str = ':'.join(map(str, sorted(group_ids, key=lambda x: int(x))))
             # TODO: use 'couples' container
             if couple_str not in storage.replicas_groupsets:
                 raise KeyError('Couple %s was not found' % (couple_str))
@@ -1162,6 +1163,16 @@ class Balancer(object):
             for group in couple.groups:
                 group.parse_meta(None)
             couple.destroy()
+
+            logger.info('Removing couple {0} from groups {1} history'.format(couple_str, group_ids))
+            try:
+                self.infrastructure.uncouple_groups(group_ids=tuple(group_ids))
+            except Exception as e:
+                logger.exception('Failed to remove couple {0} from groups {1} history'.format(
+                    couple_str, group_ids
+                ))
+                raise
+            logger.info('Removed couple {0} from groups {1} history'.format(couple_str, group_ids))
 
             return True
 
