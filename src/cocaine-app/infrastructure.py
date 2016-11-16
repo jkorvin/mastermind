@@ -811,10 +811,15 @@ class Infrastructure(object):
 
         try:
             host, port, family, backend_id = request[:4]
-            port, family, backend_id = map(int, (port, family, backend_id))
-            node_backend_str = '{0}:{1}/{2}'.format(host, port, backend_id)
+        except ValueError:
+            raise ValueError('defrag_node_backend_cmd need `request` with len(request) >= 4')
+
+        node_backend_str = '{0}:{1}/{2}'.format(host, port, backend_id)
+
+        try:
+            map(int, (port, family, backend_id))
             node_backend = storage.node_backends[node_backend_str]
-        except (ValueError, TypeError, KeyError):
+        except (ValueError, KeyError):
             raise ValueError('Node backend {0} is not found'.format(node_backend_str))
 
         cmd = self._defrag_node_backend_cmd(

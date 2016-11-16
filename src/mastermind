@@ -1987,7 +1987,9 @@ def ttl_cleanup(iter_group,
     print res
     return
 
-d = Dispatcher(globaloptions=(app_param,))
+# nested Dispactcher need to have app_param in their globaloptions:
+# Dispactcher(globaloptions=(app_param,...),...)
+d = Dispatcher()
 d.nest('group', groupDispatcher, 'Perform group action')
 d.nest('couple', coupleDispatcher, 'Perform couple action')
 d.nest('ns', nsDispatcher, 'Perform namespace action')
