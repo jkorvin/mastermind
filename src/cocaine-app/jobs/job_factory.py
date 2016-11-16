@@ -9,6 +9,7 @@ from add_lrc_groupset import AddLrcGroupsetJob
 from convert_to_lrc_groupset import ConvertToLrcGroupsetJob
 from ttl_cleanup import TtlCleanupJob
 from backend_manager import BackendManagerJob
+from s3_cleanup import S3CleanupJob
 
 
 class JobFactory(object):
@@ -36,6 +37,8 @@ class JobFactory(object):
                  BackendCleanupJob,
             JobTypes.TYPE_BACKEND_MANAGER_JOB:
                  BackendManagerJob,
+            JobTypes.TYPE_S3_CLEANUP_JOB:
+                 S3CleanupJob,
         }
         if job_type not in job_types:
             raise ValueError('Unknown job type: {}'.format(job_type))

@@ -129,6 +129,7 @@ def init_infrastructure(jf, ghf, namespaces_settings):
     helpers.register_handle(W, infstruct.recover_group_cmd)
     helpers.register_handle(W, infstruct.defrag_node_backend_cmd)
     helpers.register_handle(W, infstruct.search_history_by_path)
+    helpers.register_handle(W, infstruct.shard_s3_cleanup_cmd)
     b._set_infrastructure(infstruct)
     return infstruct
 

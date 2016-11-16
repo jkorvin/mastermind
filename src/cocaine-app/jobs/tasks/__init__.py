@@ -16,6 +16,7 @@ from change_couple_frozen_status import ChangeCoupleFrozenStatusTask
 from external_storage_data_size import ExternalStorageDataSizeTask
 from write_external_storage_mapping import WriteExternalStorageMappingTask
 from change_couple_settings import ChangeCoupleSettingsTask
+from shard_s3_cleanup import ShardS3CleanupTask
 
 
 class TaskFactory(object):
@@ -55,6 +56,8 @@ class TaskFactory(object):
                 WriteExternalStorageMappingTask,
             TaskTypes.TYPE_CHANGE_COUPLE_SETTINGS:
                 ChangeCoupleSettingsTask,
+            TaskTypes.TYPE_S3_SHARD_CLEANUP_TASK:
+                ShardS3CleanupTask,
         }
         task_type = data.get(type)
         if task_type not in Tasks:

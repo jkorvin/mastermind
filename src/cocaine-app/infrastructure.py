@@ -108,6 +108,18 @@ class Infrastructure(object):
         '--remove-expired {tskv}'
     )
 
+    S3_CLEANUP_CMD = (
+        'cleanup '
+        '--db-host {db_host} --db-port {db_port} --db-name {db_name} '
+        '--db-user {db_user} --db-password {db_password} '
+        # TODO pass passord like that? who will see it?
+        '--db-wait {db_wait} --db-attempts {db_attempts} --limit {limit} '
+        '--mds-namespace {mds_namespace} --mds-auth-token {mds_auth_token} '
+        '--mds-port {mds_port} --mds-timeout {mds_timeout}'
+        '--mds-attempts {mds_attempts}'
+        '{dry_run}{db_dry_run}'
+    )
+
     def __init__(self):
 
         # actual init happens in 'init' method
@@ -837,6 +849,63 @@ class Infrastructure(object):
     def _defrag_node_backend_cmd(self, host, port, family, backend_id):
         cmd = self.DNET_DEFRAG_CMD.format(
             host=host, port=port, family=family, backend_id=backend_id)
+        return cmd
+
+    @h.concurrent_handler
+    def shard_s3_cleanup_cmd(self, request):
+        try:
+            # TODO check on all paramaters and that db_host:db_port - is really a db-shard,
+            host, port, family, backend_id = request[:4]
+            node_str = '{0}:{1}'.format(host, port)
+            int(port)
+            node = storage.nodes[node_str]
+        except (ValueError, TypeError, KeyError):
+            raise ValueError('Node {0} is not found'.format(node_str))
+        # we are really send pass on http? or at least httpS?
+        cmd = self._shard_s3_cleanup_cmd(
+            node.host.addr,
+            node.port,
+            node.family,
+            backend_id
+        )
+
+        logger.info('TODO')
+
+        return cmd
+
+    def _shard_s3_cleanup_cmd(self,
+                              db_host,
+                              db_port,
+                              db_name,
+                              db_user,
+                              db_password,
+                              db_wait,
+                              db_attempts,
+                              limit,
+                              mds_namespace,
+                              mds_auth_token,
+                              mds_port,
+                              mds_timeout,
+                              mds_attempts,
+                              dry_run=False,
+                              db_dry_run=False):
+        cmd = self.S3_CLEANUP_CMD.format(
+            db_host=db_host,
+            db_port=db_port,
+            db_name=db_name,
+            db_user=db_user,
+            db_password=db_password,
+            db_wait=db_wait,
+            db_attempts=db_attempts,
+            limit=limit,
+            mds_namespace=mds_namespace,
+            mds_auth_token=mds_auth_token,
+            mds_port=mds_port,
+            mds_timeout=mds_timeout,
+            mds_attempts=mds_attempts,
+            dry_run=' --dry-run' if dry_run else '',
+            db_dry_run=' --db-dry-run' if db_dry_run else '',
+        )
         return cmd
 
     def _lrc_convert_cmd(self,
