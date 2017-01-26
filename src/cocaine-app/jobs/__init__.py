@@ -423,7 +423,7 @@ class JobProcessor(object):
     def __start_task(self, job, task):
         logger.info('Job {}, executing new task {}'.format(job.id, task))
 
-        task.add_history_record()
+        task.set_status(Task.STATUS_EXECUTING)
 
         try:
             task.on_exec_start(self)
@@ -445,6 +445,8 @@ class JobProcessor(object):
                 task.id
             ))
         except Exception as e:
+            task.set_status(Task.STATUS_FAILED, error=e)
+
             try:
                 task.on_exec_stop(self)
             except Exception as e1:
@@ -452,20 +454,16 @@ class JobProcessor(object):
                     job.id,
                     task.id
                 ))
+                # status is already failed, but we need to update last_run_history_record
                 task.set_status(Task.STATUS_FAILED, error=e1)
                 raise
 
             if isinstance(e, RetryError):
                 logger.error('Job {}, task {}: retry error: {}'.format(job.id, task.id, e))
                 if task.attempts < JOB_CONFIG.get('minions', {}).get('execute_attempts', 3):
-                    # NOTE: no status change, will be retried
+                    task.set_status(Task.STATUS_QUEUED)
                     return
-
-            task.set_status(Task.STATUS_FAILED, error=e)
             raise
-
-        # TODO apply set_status()
-        task.status = Task.STATUS_EXECUTING
 
     def __update_task(self, job, task):
         logger.info('Job {}, task {} status update'.format(job.id, task.id))
@@ -667,16 +665,17 @@ class JobProcessor(object):
                             task.set_status(Task.STATUS_FAILED, e)
                             raise
 
+                    task.set_status(Task.STATUS_FAILED, "Job is stopped")
+
                     try:
                         task.on_exec_stop(self)
                     except Exception as e:
                         logger.error('Job {0}, task {1}: failed to execute task '
                             'stop handler: {2}\n{3}'.format(
                                 job.id, task.id, e, traceback.format_exc()))
+                        # status is already failed, but we need to update last_run_history_record
                         task.set_status(Task.STATUS_FAILED, e)
                         raise
-
-                    task.set_status(Task.STATUS_FAILED, "Job is stopped")
                     break
 
             self._cancel_job(job)
@@ -808,8 +807,7 @@ class JobProcessor(object):
             raise ValueError('Job {0}: task {1} has status {2}, should '
                 'have been failed'.format(job.id, task.id, task.status))
 
-        # TODO apply set_status()
-        task.status = status
+        task.set_status(status)
         task.attempts = 0
         job.status = Job.STATUS_EXECUTING
         job.update_ts = time.time()

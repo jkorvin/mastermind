@@ -195,3 +195,10 @@ class Task(object):
         if status in (Task.STATUS_FAILED, Task.STATUS_COMPLETED):
             self.on_run_history_update(error=error)
             return
+
+        if status == Task.STATUS_EXECUTING:
+            self.add_history_record()
+            return
+
+        if status == Task.STATUS_QUEUED:
+            return
