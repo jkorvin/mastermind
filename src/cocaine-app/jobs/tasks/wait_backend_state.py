@@ -23,7 +23,7 @@ class WaitBackendStateTask(Task):
         super(WaitBackendStateTask, self).__init__(job)
         self.type = TaskTypes.TYPE_WAIT_BACKEND_STATE
 
-    def update_status(self):
+    def update_status(self, processor):
         # infrastructure state is updated by itself via task queue
         pass
 

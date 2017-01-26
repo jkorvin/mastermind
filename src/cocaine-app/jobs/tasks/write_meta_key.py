@@ -22,7 +22,7 @@ class WriteMetaKeyTask(Task):
         self.type = TaskTypes.TYPE_WRITE_META_KEY
         self._meta_key_written = False
 
-    def update_status(self):
+    def update_status(self, processor):
         # state update is not required.
         pass
 

@@ -19,7 +19,7 @@ class ChangeCoupleSettingsTask(Task):
         self.type = TaskTypes.TYPE_CHANGE_COUPLE_SETTINGS
         self._changed = False
 
-    def update_status(self):
+    def update_status(self, processor):
         # state update is not required.
         pass
 
