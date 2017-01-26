@@ -13,6 +13,14 @@ class Task(object):
     STATUS_COMPLETED = 'completed'
     ALL_STATUSES = (STATUS_QUEUED, STATUS_EXECUTING, STATUS_FAILED, STATUS_SKIPPED, STATUS_COMPLETED)
 
+    PREVIOUS_STATUSES = {
+        STATUS_QUEUED: (STATUS_FAILED,),
+        STATUS_EXECUTING: (STATUS_QUEUED,),
+        STATUS_COMPLETED: (STATUS_EXECUTING,),
+        STATUS_FAILED: (STATUS_EXECUTING, STATUS_FAILED),
+        STATUS_SKIPPED: (STATUS_FAILED,),
+    }
+
     def __init__(self, job):
         self.status = self.STATUS_QUEUED
         self.id = uuid.uuid4().hex
@@ -165,6 +173,20 @@ class Task(object):
                 "Attempt to change task status, unknown value: {}. Accepted statuses: {}".format(
                     status,
                     Task.ALL_STATUSES,
+                )
+            )
+
+        if self.status not in Task.PREVIOUS_STATUSES[status]:
+            error_msg = "(local error: {})".format(error) if error else ""
+            raise ValueError(
+                'Job {job_id}, task {task_id}: attempt to change task status to {new}, '
+                'current status is {current}, but expected one of {expected}.{error_msg}'.format(
+                    job_id=self.parent_job.id,
+                    task_id=self.id,
+                    new=status,
+                    current=self.status,
+                    expected=Task.PREVIOUS_STATUSES[status],
+                    error_msg=error_msg,
                 )
             )
 
