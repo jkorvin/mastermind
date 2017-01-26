@@ -22,7 +22,7 @@ class WriteExternalStorageMappingTask(Task):
         self.type = TaskTypes.TYPE_WRITE_EXTERNAL_STORAGE_MAPPING
         self._written = False
 
-    def update_status(self):
+    def update_status(self, processor):
         # state update is not required.
         pass
 

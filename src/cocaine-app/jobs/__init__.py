@@ -454,7 +454,7 @@ class JobProcessor(object):
         logger.info('Job {}, task {} status update'.format(job.id, task.id))
 
         try:
-            self.__update_task_status(task)
+            task.update_status(self)
         except Exception as e:
             logger.exception('Job {}, task {}: failed to update status'.format(job.id, task.id))
             task.set_status(Task.STATUS_FAILED, error=e)
@@ -491,12 +491,6 @@ class JobProcessor(object):
             task.set_status(Task.STATUS_COMPLETED)
 
         logger.debug('Job {}, task {} is finished, status {}'.format(job.id, task.id, task.status))
-
-    def __update_task_status(self, task):
-        if isinstance(task, MinionCmdTask):
-            task.update_status(self)
-        else:
-            task.update_status()
 
     @h.concurrent_handler
     def create_job(self, request):
