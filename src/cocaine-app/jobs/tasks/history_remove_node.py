@@ -27,6 +27,11 @@ class HistoryRemoveNodeTask(Task):
         # infrastructure state is updated by itself via task queue
         pass
 
+    def _terminate(self, processor):
+        # cannot terminate task, since this task works only synchronously
+        # early cleanup phase breaks nothing
+        pass
+
     def _execute(self, processor):
         try:
             hostname = cache.get_hostname_by_addr(self.host)

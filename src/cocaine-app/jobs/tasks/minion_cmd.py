@@ -61,6 +61,9 @@ class MinionCmdTask(Task):
         cmd_response = minion_response.values()[0]
         self._set_minion_task_parameters(cmd_response)
 
+    def _terminate(self, processor):
+        processor.minions_monitor._terminate_cmd(self.host, self.minion_cmd_id)
+
     def _set_minion_task_parameters(self, minion_cmd):
         self.minion_cmd = minion_cmd
         self.minion_cmd_id = self.minion_cmd['uid']

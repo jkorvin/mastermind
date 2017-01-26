@@ -556,19 +556,7 @@ class JobProcessor(object):
         for job in executing_jobs:
             for task in job.tasks:
                 if task.status == Task.STATUS_EXECUTING:
-                    # Move task stop handling to task itself?
-                    if isinstance(task, MinionCmdTask):
-                        try:
-                            self.minions_monitor._terminate_cmd(task.host, task.minion_cmd_id)
-                        except Exception as e:
-                            logger.error('Job {0}, task {1}: failed to stop '
-                                'minion task: {2}\n{3}'.format(
-                                    job.id, task.id, e, traceback.format_exc()))
-                            task.set_status(Task.STATUS_FAILED, e)
-                            raise
-
-                    task.set_status(Task.STATUS_FAILED, "Job is stopped")
-                    task._wrapped_on_exec_stop(self)
+                    task.stop(self)
                     break
 
             self._cancel_job(job)

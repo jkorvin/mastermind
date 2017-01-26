@@ -42,7 +42,7 @@ class Task(object):
         self.parent_job = job
 
     @staticmethod
-    def set_status_to_failed_on_error(error_msg):
+    def set_status_to_failed_on_error(error_description):
         def wrapper(function):
             @functools.wraps(function)
             def wrapped_function(self, *args, **kwargs):
@@ -52,7 +52,7 @@ class Task(object):
                     logger.exception('Job {}, task {}: {}'.format(
                         self.parent_job.id,
                         self.id,
-                        error_msg,
+                        error_description,
                     ))
                     self.set_status(Task.STATUS_FAILED, error=e)
                     raise
@@ -87,6 +87,25 @@ class Task(object):
         Should not be called directly, use _start_executing(self, processor) instead
         """
         raise NotImplementedError("Children class should override this function")
+
+    def _terminate(self, processor):
+        """
+        Should not be called directly, use stop(self, processor) instead.
+
+        If you want to implement this function as:
+            def _terminate(self, processor):
+                pass
+        Then make sure that cleanup phase, which will be after ._terminate(_, _) successfully finished
+        do not break logic of the current execution (you can always raise an exception to prevent this).
+        """
+        raise NotImplementedError("Children class should override this function")
+
+    @set_status_to_failed_on_error.__func__("failed to stop task")
+    def stop(self, processor):
+        self._terminate(processor)
+        # if termination is failed, _wrapped_on_exec_stop is not safe to call
+        self.set_status(Task.STATUS_FAILED, "Task is stopped")
+        self._wrapped_on_exec_stop(processor)
 
     def _update_status(self, processor):
         raise NotImplementedError("Children class should override this function")
