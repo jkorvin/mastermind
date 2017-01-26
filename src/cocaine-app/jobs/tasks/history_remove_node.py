@@ -27,7 +27,7 @@ class HistoryRemoveNodeTask(Task):
         # infrastructure state is updated by itself via task queue
         pass
 
-    def execute(self):
+    def _execute(self, processor):
         try:
             hostname = cache.get_hostname_by_addr(self.host)
         except CacheUpstreamError:

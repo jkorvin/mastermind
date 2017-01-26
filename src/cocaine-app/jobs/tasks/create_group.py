@@ -24,7 +24,7 @@ class CreateGroupTask(MinionCmdTask):
         self.cmd = TaskTypes.TYPE_CREATE_GROUP
         self.type = TaskTypes.TYPE_CREATE_GROUP
 
-    def execute(self, processor):
+    def _execute(self, processor):
         if self.group in storage.groups:
             raise JobBrokenError(
                 'Group {group_id} already exists'.format(

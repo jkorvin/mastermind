@@ -20,7 +20,7 @@ class RsyncBackendTask(MinionCmdTask):
         super(RsyncBackendTask, self).__init__(job)
         self.type = TaskTypes.TYPE_RSYNC_BACKEND_TASK
 
-    def execute(self, processor):
+    def _execute(self, processor):
         logger.info(
             'Job {job_id}, task {task_id}: checking group {group_id} '
             'and node backend {nb} state'.format(
@@ -66,7 +66,7 @@ class RsyncBackendTask(MinionCmdTask):
                     )
                 )
 
-        super(RsyncBackendTask, self).execute(processor)
+        super(RsyncBackendTask, self)._execute(processor)
 
     def __hostnames(self, hosts):
         hostnames = []

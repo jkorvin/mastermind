@@ -35,6 +35,9 @@ class Task(object):
         """
         pass
 
+    def _execute(self, processor):
+        raise NotImplementedError("Children class should override this function")
+
     @classmethod
     def new(cls, job, **kwargs):
         task = cls(job)

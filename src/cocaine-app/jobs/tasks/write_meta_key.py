@@ -26,7 +26,7 @@ class WriteMetaKeyTask(Task):
         # state update is not required.
         pass
 
-    def execute(self):
+    def _execute(self, processor):
         # this task execution does not rely on common task workflow
         # of executing a command and waiting till it's finished,
         # rather it tries to execute action on 'finished' check

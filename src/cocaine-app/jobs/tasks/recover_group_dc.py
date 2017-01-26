@@ -36,7 +36,7 @@ class RecoverGroupDcTask(MinionCmdTask):
                 'should be {3}'.format(self, self.group,
                                        group.status, storage.Status.COUPLED))
 
-    def execute(self, processor):
+    def _execute(self, processor):
 
         # checking if task still applicable
         logger.info('Job {0}, task {1}: checking group {2} and couple {3} '
@@ -50,7 +50,7 @@ class RecoverGroupDcTask(MinionCmdTask):
                 'expected {3}'.format(self, self.group,
                                        group.couple, self.couple))
 
-        super(RecoverGroupDcTask, self).execute(processor)
+        super(RecoverGroupDcTask, self)._execute(processor)
 
     STATUSES_TO_SKIP = (
         -2,   # No such file or directory (key is not found)
