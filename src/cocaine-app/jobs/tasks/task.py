@@ -114,7 +114,7 @@ class Task(object):
     def __str__(self):
         raise RuntimeError('__str__ method should be implemented in derived class')
 
-    def make_new_history_record(self):
+    def _make_new_history_record(self):
         return RunHistoryRecord({
             RunHistoryRecord.START_TS: None,
             RunHistoryRecord.FINISH_TS: None,
@@ -124,8 +124,8 @@ class Task(object):
             RunHistoryRecord.DELAYED_TILL_TS: None,
         })
 
-    def add_history_record(self):
-        record = self.make_new_history_record()
+    def _add_history_record(self):
+        record = self._make_new_history_record()
         record.start_ts = int(time.time())
         self.run_history.append(record)
         return record
@@ -200,7 +200,7 @@ class Task(object):
             return
 
         if status == Task.STATUS_EXECUTING:
-            self.add_history_record()
+            self._add_history_record()
             return
 
         if status == Task.STATUS_QUEUED:

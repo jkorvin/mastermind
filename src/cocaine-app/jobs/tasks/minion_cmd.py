@@ -101,8 +101,8 @@ class MinionCmdTask(Task):
     def __str__(self):
         return 'MinionCmdTask[id: {0}]<{1}>'.format(self.id, self.cmd)
 
-    def make_new_history_record(self):
-        record = super(MinionCmdTask, self).make_new_history_record()
+    def _make_new_history_record(self):
+        record = super(MinionCmdTask, self)._make_new_history_record()
         record.command_uid = None
         record.exit_code = None
         return record
