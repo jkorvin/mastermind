@@ -27,6 +27,7 @@ class Task(object):
         STATUS_FAILED: (STATUS_EXECUTING, STATUS_FAILED),
         STATUS_SKIPPED: (STATUS_FAILED,),
     }
+    FINISHED_STATUSES = (STATUS_SKIPPED, STATUS_COMPLETED)
 
     def __init__(self, job):
         self._status = Task.STATUS_QUEUED
