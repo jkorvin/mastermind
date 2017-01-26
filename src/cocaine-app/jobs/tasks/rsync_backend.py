@@ -77,7 +77,7 @@ class RsyncBackendTask(MinionCmdTask):
                 raise RuntimeError('Failed to resolve host {0}'.format(host))
         return hostnames
 
-    def on_exec_start(self, processor):
+    def _on_exec_start(self, processor):
         hostnames = set(self.__hostnames([self.host, self.src_host]))
 
         dl = jobs.Job.list(processor.downtimes,
@@ -121,7 +121,7 @@ class RsyncBackendTask(MinionCmdTask):
             )
             raise
 
-    def on_exec_stop(self, processor):
+    def _on_exec_stop(self, processor):
         hostnames = set(self.__hostnames([self.host, self.src_host]))
 
         dl = jobs.Job.list(processor.downtimes,
