@@ -178,11 +178,17 @@ class Task(object):
                 )
             )
 
-        self.status = status
+        self._status = status
 
         if status in (Task.STATUS_FAILED, Task.STATUS_COMPLETED):
             self.on_run_history_update(error=error)
             return
 
+        if status == Task.STATUS_EXECUTING:
+            self.add_history_record()
+            return
+
+        if status == Task.STATUS_QUEUED:
+            return
 
 Task.ALL_STATUSES = (v for k, v in vars(Task).iteritems() if k.startswith("STATUS_"))
