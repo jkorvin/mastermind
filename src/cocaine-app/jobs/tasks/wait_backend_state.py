@@ -27,7 +27,7 @@ class WaitBackendStateTask(Task):
         # infrastructure state is updated by itself via task queue
         pass
 
-    def execute(self):
+    def _execute(self, processor):
         pass
 
     def finished(self, processor):

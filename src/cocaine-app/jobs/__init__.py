@@ -521,10 +521,7 @@ class JobProcessor(object):
 
     def __execute_task(self, task):
         task.start_ts, task.finish_ts = time.time(), None
-        if isinstance(task, MinionCmdTask):
-            task.execute(self)
-        else:
-            task.execute()
+        task._execute(self)
 
     @h.concurrent_handler
     def create_job(self, request):

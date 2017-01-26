@@ -49,7 +49,7 @@ class MinionCmdTask(Task):
             return
         self._set_run_history_parameters(self.minion_cmd)
 
-    def execute(self, processor):
+    def _execute(self, processor):
         try:
             minion_response = processor.minions_monitor.execute(
                 self.host,

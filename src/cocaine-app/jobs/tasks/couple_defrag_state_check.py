@@ -22,7 +22,7 @@ class CoupleDefragStateCheckTask(Task):
         # infrastructure state is updated by itself via task queue
         pass
 
-    def execute(self):
+    def _execute(self, processor):
         # TODO: use 'couples' container
         couples = (storage.cache_couples
                    if self.parent_job.is_cache_couple else
