@@ -1,7 +1,12 @@
+import logging
 import time
 import uuid
 
+from jobs import JOB_CONFIG
+from error import RetryError
 from run_history import RunHistoryRecord
+
+logger = logging.getLogger('mm.tasks')
 
 
 class Task(object):
@@ -193,5 +198,50 @@ class Task(object):
 
         if status == Task.STATUS_QUEUED:
             return
+
+    def _start_task(self, processor):
+        logger.info('Job {}, executing new task {}'.format(self.parent_job.id, self))
+
+        self.set_status(Task.STATUS_EXECUTING)
+
+        try:
+            self.on_exec_start(processor)
+            logger.info('Job {}, task {} preparation completed'.format(self.parent_job.id, self.id))
+        except Exception as e:
+            logger.exception('Job {}, task {}: failed to execute task start handler'.format(
+                self.parent_job.id,
+                self.id
+            ))
+            self.set_status(Task.STATUS_FAILED, error=e)
+            raise
+
+        try:
+            self.attempts += 1
+            self._start_executing(processor)
+            logger.info('Job {}, task {} execution successfully started'.format(
+                self.parent_job.id,
+                self.id
+            ))
+        except Exception as e:
+            self.set_status(Task.STATUS_FAILED, error=e)
+
+            try:
+                self.on_exec_stop(processor)
+            except Exception:
+                logger.exception('Job {}, task {}: failed to execute task stop handler'.format(
+                    self.parent_job.id,
+                    self.id
+                ))
+                # need to update last_run_history_record
+                self.set_status(Task.STATUS_FAILED, error=e)
+                raise
+
+            if isinstance(e, RetryError):
+                logger.error('Job {}, task {}: retry error: {}'.format(self.parent_job.id, self.id, e))
+                if self.attempts < JOB_CONFIG.get('minions', {}).get('execute_attempts', 3):
+                    # NOTE: no status change, will be retried
+                    self.set_status(Task.STATUS_QUEUED)
+                    return
+            raise
 
 Task.ALL_STATUSES = (v for k, v in vars(Task).iteritems() if k.startswith("STATUS_"))

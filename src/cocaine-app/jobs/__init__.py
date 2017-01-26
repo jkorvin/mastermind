@@ -347,7 +347,7 @@ class JobProcessor(object):
                 # NOTE: task can change status to 'executing' on this step, then
                 # it is safe to continue task execution
                 try:
-                    self.__start_task(job, task)
+                    task._start_task(self)
                 except JobBrokenError as e:
                     job.status = Job.STATUS_BROKEN
                     job.on_execution_interrupted(error_msg=str(e))
@@ -405,50 +405,6 @@ class JobProcessor(object):
             except RuntimeError as e:
                 logger.error('Job {}, failed to complete job: {}'.format(job.id, e))
                 raise
-
-    def __start_task(self, job, task):
-        logger.info('Job {}, executing new task {}'.format(job.id, task))
-
-        task.set_status(Task.STATUS_EXECUTING)
-
-        try:
-            task.on_exec_start(self)
-            logger.info('Job {}, task {} preparation completed'.format(job.id, task.id))
-        except Exception as e:
-            logger.exception('Job {}, task {}: failed to execute task start handler'.format(
-                job.id,
-                task.id
-            ))
-            task.set_status(Task.STATUS_FAILED, error=e)
-            raise
-
-        try:
-            task.attempts += 1
-            task._start_executing(self)
-            logger.info('Job {}, task {} execution successfully started'.format(
-                job.id,
-                task.id
-            ))
-        except Exception as e:
-            task.set_status(Task.STATUS_FAILED, error=e)
-
-            try:
-                task.on_exec_stop(self)
-            except Exception as e1:
-                logger.exception('Job {}, task {}: failed to execute task stop handler'.format(
-                    job.id,
-                    task.id
-                ))
-                # need to update last_run_history_record
-                task.set_status(Task.STATUS_FAILED, error=e1)
-                raise
-
-            if isinstance(e, RetryError):
-                logger.error('Job {}, task {}: retry error: {}'.format(job.id, task.id, e))
-                if task.attempts < JOB_CONFIG.get('minions', {}).get('execute_attempts', 3):
-                    task.set_status(Task.STATUS_QUEUED)
-                    return
-            raise
 
     def __update_task(self, job, task):
         logger.info('Job {}, task {} status update'.format(job.id, task.id))
