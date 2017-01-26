@@ -22,7 +22,7 @@ class Task(object):
     }
 
     def __init__(self, job):
-        self.status = self.STATUS_QUEUED
+        self._status = Task.STATUS_QUEUED
         self.id = uuid.uuid4().hex
         self.type = None
         self.start_ts = None
@@ -70,7 +70,7 @@ class Task(object):
     def load(self, data):
         # TODO: remove 'or' part
         self.id = data['id'] or uuid.uuid4().hex
-        self.status = data['status']
+        self._status = data['status']
         self.type = data['type']
         self.start_ts = data['start_ts']
         self.finish_ts = data['finish_ts']
@@ -90,7 +90,7 @@ class Task(object):
 
     def dump(self):
         res = {
-            'status': self.status,
+            'status': self._status,
             'id': self.id,
             'type': self.type,
             'start_ts': self.start_ts,
@@ -140,7 +140,7 @@ class Task(object):
             return
         last_record = self.last_run_history_record
         last_record.finish_ts = int(time.time())
-        if self.status == Task.STATUS_FAILED or error:
+        if self._status == Task.STATUS_FAILED or error:
             last_record.status = 'error'
             if error:
                 last_record.error_msg = str(error)
@@ -167,6 +167,10 @@ class Task(object):
         """
         return None
 
+    @property
+    def status(self):
+        return self._status
+
     def set_status(self, status, error=None):
         if status not in Task.ALL_STATUSES:
             raise ValueError(
@@ -176,7 +180,7 @@ class Task(object):
                 )
             )
 
-        if self.status not in Task.PREVIOUS_STATUSES[status]:
+        if self._status not in Task.PREVIOUS_STATUSES[status]:
             error_msg = "(local error: {})".format(error) if error else ""
             raise ValueError(
                 'Job {job_id}, task {task_id}: attempt to change task status to {new}, '
@@ -190,7 +194,7 @@ class Task(object):
                 )
             )
 
-        self.status = status
+        self._status = status
 
         if status in (Task.STATUS_FAILED, Task.STATUS_COMPLETED):
             self.on_run_history_update(error=error)
