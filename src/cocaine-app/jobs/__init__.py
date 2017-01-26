@@ -433,8 +433,7 @@ class JobProcessor(object):
                 job.id,
                 task.id
             ))
-            task.status = Task.STATUS_FAILED
-            task.on_run_history_update(error=e)
+            task.set_status(Task.STATUS_FAILED, error=e)
             raise
 
         try:
@@ -453,8 +452,7 @@ class JobProcessor(object):
                     job.id,
                     task.id
                 ))
-                task.status = Task.STATUS_FAILED
-                task.on_run_history_update(error=e)
+                task.set_status(Task.STATUS_FAILED, error=e)
                 raise
 
             if isinstance(e, RetryError):
@@ -463,10 +461,10 @@ class JobProcessor(object):
                     # NOTE: no status change, will be retried
                     return
 
-            task.status = Task.STATUS_FAILED
-            task.on_run_history_update(error=e)
+            task.set_status(Task.STATUS_FAILED, error=e)
             raise
 
+        # TODO apply set_status()
         task.status = Task.STATUS_EXECUTING
 
     def __update_task(self, job, task):
@@ -476,11 +474,9 @@ class JobProcessor(object):
             self.__update_task_status(task)
         except Exception as e:
             logger.exception('Job {}, task {}: failed to update status'.format(job.id, task.id))
-            task.status = Task.STATUS_FAILED
+            task.set_status(Task.STATUS_FAILED, error=e)
 
             # TODO: should we call on_exec_stop here?
-
-            task.on_run_history_update(error=e)
             raise
 
         try:
@@ -493,11 +489,9 @@ class JobProcessor(object):
                            Task.STATUS_COMPLETED)
         except Exception as e:
             logger.exception('Job {}, task {}: failed to check status'.format(job.id, task.id))
-            task.status = Task.STATUS_FAILED
+            task.set_status(Task.STATUS_FAILED, error=e)
 
             # TODO: should we call on_exec_stop here?
-
-            task.on_run_history_update(error=e)
             raise
 
         try:
@@ -507,7 +501,7 @@ class JobProcessor(object):
                 job.id,
                 task.id
             ))
-            task.status = Task.STATUS_FAILED
+            task.set_status(Task.STATUS_FAILED, error=e)
             raise
 
         task.on_run_history_update()
@@ -668,6 +662,7 @@ class JobProcessor(object):
                             logger.error('Job {0}, task {1}: failed to stop '
                                 'minion task: {2}\n{3}'.format(
                                     job.id, task.id, e, traceback.format_exc()))
+                            task.set_status(Task.STATUS_FAILED, e)
                             raise
 
                     try:
@@ -676,10 +671,10 @@ class JobProcessor(object):
                         logger.error('Job {0}, task {1}: failed to execute task '
                             'stop handler: {2}\n{3}'.format(
                                 job.id, task.id, e, traceback.format_exc()))
+                        task.set_status(Task.STATUS_FAILED, e)
                         raise
 
-                    task.status = Task.STATUS_FAILED
-
+                    task.set_status(Task.STATUS_FAILED, "Job is stopped")
                     break
 
             self._cancel_job(job)
@@ -811,6 +806,7 @@ class JobProcessor(object):
             raise ValueError('Job {0}: task {1} has status {2}, should '
                 'have been failed'.format(job.id, task.id, task.status))
 
+        # TODO apply set_status()
         task.status = status
         task.attempts = 0
         job.status = Job.STATUS_EXECUTING

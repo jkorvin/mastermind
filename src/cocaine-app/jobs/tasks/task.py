@@ -11,6 +11,7 @@ class Task(object):
     STATUS_FAILED = 'failed'
     STATUS_SKIPPED = 'skipped'
     STATUS_COMPLETED = 'completed'
+    ALL_STATUSES = (STATUS_QUEUED, STATUS_EXECUTING, STATUS_FAILED, STATUS_SKIPPED, STATUS_COMPLETED)
 
     def __init__(self, job):
         self.status = self.STATUS_QUEUED
@@ -157,3 +158,18 @@ class Task(object):
         'None' is interpreted as no automatic retry attempts.
         """
         return None
+
+    def set_status(self, status, error=None):
+        if status not in Task.ALL_STATUSES:
+            raise ValueError(
+                "Attempt to change task status, unknown value: {}. Accepted statuses: {}".format(
+                    status,
+                    Task.ALL_STATUSES,
+                )
+            )
+
+        self.status = status
+
+        if status in (Task.STATUS_FAILED, Task.STATUS_COMPLETED):
+            self.on_run_history_update(error=error)
+            return
