@@ -135,7 +135,7 @@ class JobProcessor(object):
 
     def _retry_job(self, job):
         for task in job.tasks:
-            if task.status in (Task.STATUS_COMPLETED, Task.STATUS_COMPLETED):
+            if task.status in Task.FINISHED_STATUSES:
                 continue
             if task.status != Task.STATUS_FAILED:
                 # unexpected status, skip job processing
@@ -337,10 +337,7 @@ class JobProcessor(object):
 
         for task in job.tasks:
 
-            if task.status == Task.STATUS_SKIPPED:
-                continue
-
-            if task.status == Task.STATUS_COMPLETED:
+            if task.status in Task.FINISHED_STATUSES:
                 continue
 
             if task.status == Task.STATUS_QUEUED:
@@ -395,9 +392,7 @@ class JobProcessor(object):
                 job.on_execution_interrupted()
                 break
 
-        finished_statuses = (Task.STATUS_COMPLETED, Task.STATUS_SKIPPED)
-
-        if all(task.status in finished_statuses for task in job.tasks):
+        if all(task.status in Task.FINISHED_STATUSES for task in job.tasks):
             logger.info('Job {}, tasks processing is finished'.format(job.id))
             try:
                 job.status = Job.STATUS_COMPLETED

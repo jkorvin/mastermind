@@ -24,6 +24,7 @@ class Task(object):
         STATUS_SKIPPED: (STATUS_FAILED,),
     }
     ALL_STATUSES = None  # ALL_STATUSES is set after definition of Task class
+    FINISHED_STATUSES = (STATUS_SKIPPED, STATUS_COMPLETED)
 
     def __init__(self, job):
         self._status = Task.STATUS_QUEUED
@@ -188,7 +189,7 @@ class Task(object):
 
         self._status = status
 
-        if status in (Task.STATUS_FAILED, Task.STATUS_COMPLETED):
+        if status in Task.FINISHED_STATUSES:
             self.on_run_history_update(error=error)
             return
 
