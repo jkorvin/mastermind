@@ -37,13 +37,32 @@ class Task(object):
         self.run_history = []
         self.parent_job = job
 
-    def on_exec_start(self, processor):
+    @staticmethod
+    def set_status_to_failed_on_error(error_msg):
+        def wrapper(function):
+            def wrapped_function(self, *args, **kwargs):
+                try:
+                    function(self, *args, **kwargs)
+                except Exception as e:
+                    logger.exception('Job {}, task {}: {}'.format(
+                        self.parent_job.id,
+                        self.id,
+                        error_msg,
+                    ))
+                    self.set_status(Task.STATUS_FAILED, error=e)
+                    raise
+            return wrapped_function
+        return wrapper
+
+    @set_status_to_failed_on_error("failed to execute task start handler")
+    def _on_exec_start(self, processor):
         """
         Called every time task changes status from 'queued' to 'executing'
         """
         pass
 
-    def on_exec_stop(self, processor):
+    @set_status_to_failed_on_error("failed to execute task stop handler")
+    def _on_exec_stop(self, processor):
         """
         Called every time task changes status from 'executing' to anything else
         """
@@ -214,16 +233,8 @@ class Task(object):
 
         self.set_status(Task.STATUS_EXECUTING)
 
-        try:
-            self.on_exec_start(processor)
-            logger.info('Job {}, task {} preparation completed'.format(self.parent_job.id, self.id))
-        except Exception as e:
-            logger.exception('Job {}, task {}: failed to execute task start handler'.format(
-                self.parent_job.id,
-                self.id
-            ))
-            self.set_status(Task.STATUS_FAILED, error=e)
-            raise
+        self._on_exec_start(processor)
+        logger.info('Job {}, task {} preparation completed'.format(self.parent_job.id, self.id))
 
         try:
             self.attempts += 1
@@ -234,17 +245,7 @@ class Task(object):
             ))
         except Exception as e:
             self.set_status(Task.STATUS_FAILED, error=e)
-
-            try:
-                self.on_exec_stop(processor)
-            except Exception:
-                logger.exception('Job {}, task {}: failed to execute task stop handler'.format(
-                    self.parent_job.id,
-                    self.id
-                ))
-                # need to update last_run_history_record
-                self.set_status(Task.STATUS_FAILED, error=e)
-                raise
+            self._on_exec_stop(processor)
 
             if isinstance(e, RetryError):
                 logger.error('Job {}, task {}: retry error: {}'.format(self.parent_job.id, self.id, e))
@@ -263,7 +264,7 @@ class Task(object):
             logger.exception('Job {}, task {}: failed to update status'.format(self.parent_job.id, self.id))
             self.set_status(Task.STATUS_FAILED, error=e)
 
-            # TODO: should we call on_exec_stop here?
+            # TODO: should we call _on_exec_stop here?
             raise
 
         try:
@@ -276,21 +277,13 @@ class Task(object):
             logger.exception('Job {}, task {}: failed to check status'.format(self.parent_job.id, self.id))
             self.set_status(Task.STATUS_FAILED, error=e)
 
-            # TODO: should we call on_exec_stop here?
+            # TODO: should we call _on_exec_stop here?
             raise
 
         if task_is_failed:
             self.set_status(Task.STATUS_FAILED)
 
-        try:
-            self.on_exec_stop(processor)
-        except Exception as e:
-            logger.exception('Job {}, task {}: failed to execute task stop handler'.format(
-                self.parent_job.id,
-                self.id
-            ))
-            self.set_status(Task.STATUS_FAILED, error=e)
-            raise
+        self._on_exec_stop(processor)
 
         if not task_is_failed:
             self.set_status(Task.STATUS_COMPLETED)

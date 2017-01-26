@@ -563,16 +563,7 @@ class JobProcessor(object):
                             raise
 
                     task.set_status(Task.STATUS_FAILED, "Job is canceled")
-
-                    try:
-                        task.on_exec_stop(self)
-                    except Exception as e:
-                        logger.error('Job {0}, task {1}: failed to execute task '
-                            'stop handler: {2}\n{3}'.format(
-                                job.id, task.id, e, traceback.format_exc()))
-                        # need to update last_run_history_record
-                        task.set_status(Task.STATUS_FAILED, e)
-                        raise
+                    task._on_exec_stop(self)
                     break
 
             self._cancel_job(job)
