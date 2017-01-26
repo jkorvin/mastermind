@@ -121,7 +121,6 @@ class Task(object):
             RunHistoryRecord.STATUS: None,
             RunHistoryRecord.ARTIFACTS: {},
             RunHistoryRecord.ERROR_MSG: None,
-            RunHistoryRecord.ATTEMPTS: 0,
             RunHistoryRecord.DELAYED_TILL_TS: None,
         })
 

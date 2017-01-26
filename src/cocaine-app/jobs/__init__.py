@@ -438,7 +438,6 @@ class JobProcessor(object):
 
         try:
             task.attempts += 1
-            task.last_run_history_record.attempts = task.last_run_history_record.attempts + 1
             task._start_executing(self)
             logger.info('Job {}, task {} execution successfully started'.format(
                 job.id,
