@@ -433,12 +433,12 @@ class JobProcessor(object):
         except Exception as e:
             try:
                 task.on_exec_stop(self)
-            except Exception:
+            except Exception as e1:
                 logger.exception('Job {}, task {}: failed to execute task stop handler'.format(
                     job.id,
                     task.id
                 ))
-                task.set_status(Task.STATUS_FAILED, error=e)
+                task.set_status(Task.STATUS_FAILED, error=e1)
                 raise
 
             if isinstance(e, RetryError):

@@ -11,6 +11,13 @@ class Task(object):
     STATUS_FAILED = 'failed'
     STATUS_SKIPPED = 'skipped'
     STATUS_COMPLETED = 'completed'
+    PREVIOUS_STATUSES = {
+        STATUS_QUEUED: (STATUS_FAILED,),
+        STATUS_EXECUTING: (STATUS_QUEUED,),
+        STATUS_COMPLETED: (STATUS_EXECUTING,),
+        STATUS_FAILED: (STATUS_EXECUTING, STATUS_FAILED),
+        STATUS_SKIPPED: (STATUS_FAILED,),
+    }
     ALL_STATUSES = None  # ALL_STATUSES is set after definition of Task class
 
     def __init__(self, job):
@@ -163,8 +170,13 @@ class Task(object):
         if status not in Task.ALL_STATUSES:
             raise ValueError("Attempt to change status of task, unknown status: {}".format(status))
 
-        if self.status == status:
-            return
+        if self.status not in Task.PREVIOUS_STATUSES[status]:
+            raise ValueError(
+                'Job {}, task {}: attempt to change task status to {}, current status is {}, '
+                'but expected one of {}'.format(
+                    self.parent_job.id, self.id, status, self.status, Task.PREVIOUS_STATUSES[status]
+                )
+            )
 
         self.status = status
 
