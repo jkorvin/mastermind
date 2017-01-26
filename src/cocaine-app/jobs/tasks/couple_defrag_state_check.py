@@ -18,7 +18,7 @@ class CoupleDefragStateCheckTask(Task):
         super(CoupleDefragStateCheckTask, self).__init__(job)
         self.type = TaskTypes.TYPE_COUPLE_DEFRAG_STATE_CHECK_TASK
 
-    def update_status(self, processor):
+    def _update_status(self, processor):
         # infrastructure state is updated by itself via task queue
         pass
 

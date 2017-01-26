@@ -23,7 +23,7 @@ class HistoryRemoveNodeTask(Task):
         super(HistoryRemoveNodeTask, self).__init__(job)
         self.type = TaskTypes.TYPE_HISTORY_REMOVE_NODE
 
-    def update_status(self, processor):
+    def _update_status(self, processor):
         # infrastructure state is updated by itself via task queue
         pass
 

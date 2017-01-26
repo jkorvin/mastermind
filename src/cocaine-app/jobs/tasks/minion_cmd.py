@@ -32,7 +32,7 @@ class MinionCmdTask(Task):
         task.params['task_id'] = task.id
         return task
 
-    def update_status(self, processor):
+    def _update_status(self, processor):
         try:
             self.minion_cmd = processor.minions_monitor._get_command(self.minion_cmd_id)
             logger.debug('Job {0}, task {1}, minion command status was updated: {2}'.format(

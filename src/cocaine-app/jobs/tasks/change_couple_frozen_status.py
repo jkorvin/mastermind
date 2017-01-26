@@ -23,7 +23,7 @@ class ChangeCoupleFrozenStatusTask(Task):
         self.type = TaskTypes.TYPE_CHANGE_COUPLE_FROZEN_STATUS
         self._meta_key_written = False
 
-    def update_status(self, processor):
+    def _update_status(self, processor):
         # state update is not required.
         pass
 
