@@ -36,7 +36,14 @@ class Task(object):
         pass
 
     def _execute(self, processor):
+        """
+        Should not be called directly, use _start_executing(self, processor) instead
+        """
         raise NotImplementedError("Children class should override this function")
+
+    def _start_executing(self, processor):
+        self.start_ts, self.finish_ts = time.time(), None
+        self._execute(self, processor)
 
     @classmethod
     def new(cls, job, **kwargs):

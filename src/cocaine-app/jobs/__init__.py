@@ -426,7 +426,7 @@ class JobProcessor(object):
         try:
             task.attempts += 1
             task.last_run_history_record.attempts = task.last_run_history_record.attempts + 1
-            self.__execute_task(task)
+            task._start_executing(self)
             logger.info('Job {}, task {} execution successfully started'.format(
                 job.id,
                 task.id
@@ -504,10 +504,6 @@ class JobProcessor(object):
             task.update_status(self)
         else:
             task.update_status()
-
-    def __execute_task(self, task):
-        task.start_ts, task.finish_ts = time.time(), None
-        task._execute(self)
 
     @h.concurrent_handler
     def create_job(self, request):
