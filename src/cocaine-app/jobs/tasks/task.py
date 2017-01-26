@@ -55,6 +55,15 @@ class Task(object):
         """
         raise NotImplementedError("Children class should override this function")
 
+    def update_status(self, processor):
+        raise NotImplementedError("Children class should override this function")
+
+    def finished(self, processor):
+        raise NotImplementedError("Children class should override this function")
+
+    def failed(self, processor):
+        raise NotImplementedError("Children class should override this function")
+
     def _start_executing(self, processor):
         self.start_ts, self.finish_ts = time.time(), None
         self._execute(self, processor)
@@ -244,5 +253,49 @@ class Task(object):
                     self.set_status(Task.STATUS_QUEUED)
                     return
             raise
+
+    def _update_task(self, processor):
+        logger.info('Job {}, task {} status update'.format(self.parent_job.id, self.id))
+
+        try:
+            self.update_status(processor)
+        except Exception as e:
+            logger.exception('Job {}, task {}: failed to update status'.format(self.parent_job.id, self.id))
+            self.set_status(Task.STATUS_FAILED, error=e)
+
+            # TODO: should we call on_exec_stop here?
+            raise
+
+        try:
+            if not self.finished(processor):
+                logger.debug('Job {}, task {} is not finished'.format(self.parent_job.id, self.id))
+                return
+            task_is_failed = self.failed(processor)
+
+        except Exception as e:
+            logger.exception('Job {}, task {}: failed to check status'.format(self.parent_job.id, self.id))
+            self.set_status(Task.STATUS_FAILED, error=e)
+
+            # TODO: should we call on_exec_stop here?
+            raise
+
+        if task_is_failed:
+            self.set_status(Task.STATUS_FAILED)
+
+        try:
+            self.on_exec_stop(processor)
+        except Exception as e:
+            logger.exception('Job {}, task {}: failed to execute task stop handler'.format(
+                self.parent_job.id,
+                self.id
+            ))
+            self.set_status(Task.STATUS_FAILED, error=e)
+            raise
+
+        if not task_is_failed:
+            self.set_status(Task.STATUS_COMPLETED)
+
+        logger.debug('Job {}, task {} is finished, status {}'.format(self.parent_job.id, self.id, self.status))
+
 
 Task.ALL_STATUSES = (v for k, v in vars(Task).iteritems() if k.startswith("STATUS_"))
