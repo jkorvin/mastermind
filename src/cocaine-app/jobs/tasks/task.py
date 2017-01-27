@@ -292,16 +292,18 @@ class Task(object):
                 self.parent_job.id,
                 self.id
             ))
-        except Exception as e:
+        except RetryError as e:
+            logger.error('Job {}, task {}: retry error: {}'.format(self.parent_job.id, self.id, e))
             self.set_status(Task.STATUS_FAILED, error=e)
             self._wrapped_on_exec_stop(processor)
-
-            if isinstance(e, RetryError):
-                logger.error('Job {}, task {}: retry error: {}'.format(self.parent_job.id, self.id, e))
-                if self.attempts < JOB_CONFIG.get('minions', {}).get('execute_attempts', 3):
-                    # NOTE: no status change, will be retried
-                    self.set_status(Task.STATUS_QUEUED)
-                    return
+            if self.attempts < JOB_CONFIG.get('minions', {}).get('execute_attempts', 3):
+                self.set_status(Task.STATUS_QUEUED)
+                return
+            raise
+        except Exception as e:
+            logger.exception('Job {}, task {}: failed to execute task'.format(self.parent_job.id, self.id))
+            self.set_status(Task.STATUS_FAILED, error=e)
+            self._wrapped_on_exec_stop(processor)
             raise
 
     def update(self, processor):

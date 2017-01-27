@@ -557,6 +557,7 @@ class JobProcessor(object):
             for task in job.tasks:
                 if task.status == Task.STATUS_EXECUTING:
                     task.stop(self)
+                    logging.info("Job {}, task {}: cancelled".format(job.id, task.id))
                     break
 
             self._cancel_job(job)
