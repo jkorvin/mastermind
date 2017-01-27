@@ -283,12 +283,12 @@ class Task(object):
         self.set_status(Task.STATUS_EXECUTING)
 
         self._wrapped_on_exec_start(processor)
-        logger.info('Job {}, task {} preparation completed'.format(self.parent_job.id, self.id))
+        logger.info('Job {}, task {}: preparation completed'.format(self.parent_job.id, self.id))
 
         try:
             self.attempts += 1
             self._start_executing(processor)
-            logger.info('Job {}, task {} execution successfully started'.format(
+            logger.info('Job {}, task {}: execution successfully started'.format(
                 self.parent_job.id,
                 self.id
             ))
@@ -322,7 +322,7 @@ class Task(object):
 
         try:
             if not self.finished(processor):
-                logger.debug('Job {}, task {} is not finished'.format(self.parent_job.id, self.id))
+                logger.debug('Job {}, task {}: is not finished'.format(self.parent_job.id, self.id))
                 return
             task_is_failed = self.failed(processor)
 
@@ -341,4 +341,4 @@ class Task(object):
         if not task_is_failed:
             self.set_status(Task.STATUS_COMPLETED)
 
-        logger.debug('Job {}, task {} is finished, status {}'.format(self.parent_job.id, self.id, self.status))
+        logger.debug('Job {}, task {}: is finished, status {}'.format(self.parent_job.id, self.id, self.status))
