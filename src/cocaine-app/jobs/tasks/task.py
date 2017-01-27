@@ -6,6 +6,8 @@ import uuid
 from mastermind_core.config import config
 from jobs.error import RetryError
 from run_history import RunHistoryRecord
+from sync import sync_manager
+from sync.error import LockAlreadyAcquiredError, LockError, InconsistentLockError
 
 logger = logging.getLogger('mm.jobs')
 
@@ -65,6 +67,7 @@ class Task(object):
         self.error_msg = []
         self.run_history = []
         self.parent_job = job
+        self.acquired_locks = []
 
     def _on_exec_start(self, processor):
         """
@@ -75,7 +78,12 @@ class Task(object):
 
     @set_status_to_failed_on_error("failed to execute task start handler")
     def _wrapped_on_exec_start(self, processor):
-        self._on_exec_start(processor)
+        self._acquire_locks()
+        try:
+            self._on_exec_start(processor)
+        except:
+            self._free_locks()
+            raise
 
     # self.status is an indicator either task is successfully finished or not
     def _on_exec_stop(self, processor):
@@ -87,7 +95,10 @@ class Task(object):
 
     @set_status_to_failed_on_error("failed to execute task stop handler")
     def _wrapped_on_exec_stop(self, processor):
-        self._on_exec_stop(processor)
+        try:
+            self._on_exec_stop(processor)
+        finally:
+            self._free_locks()
 
     def _execute(self, processor):
         """
@@ -127,6 +138,64 @@ class Task(object):
         self.start_ts, self.finish_ts = time.time(), None
         self._execute(processor)
 
+    @property
+    def needed_locks(self):
+        return []
+
+    def _acquire_locks(self):
+        logger.info('Job {}, task {}: try to acquire persistent locks {}, with data {}'.format(
+            self.parent_job.id,
+            self.id,
+            self.needed_locks,
+            self.human_id,
+        ))
+
+        try:
+            # at first we try to acquire all needed locks, even if part of them is already acquired
+            sync_manager.persistent_locks_acquire(self.needed_locks, data=self.human_id)
+
+        except LockAlreadyAcquiredError as e:
+            # it is acceptable only if locks are already acquired by us
+            if e.holder_id != self.human_id:
+                # TODO create some logic that prevent infinity attempt to get locks
+                self.attempts -= 1
+                logger.error('Job {}, task {}: ignoring current attempt: we cannot acquire locks {}'.format(
+                    self.parent_job.id,
+                    self.id,
+                    self.needed_locks,
+                ))
+
+                raise RetryError(self.attempts, e)
+
+            # logically it is impossible, but if somehow some locks are already acquire by us,
+            # then we can proceed after we acquire the rest of locks.
+            remained_locks = set(self.needed_locks) - set(e.lock_ids)
+            try:
+                sync_manager.persistent_locks_acquire(list(remained_locks), data=self.human_id)
+            except LockError as e1:
+                raise RetryError(self.attempts, e1)
+
+        except LockError as e:
+            raise RetryError(self.attempts, e)
+
+        self.acquired_locks = self.needed_locks
+
+        logger.info('Job {}, task {}: persistent locks {} are acquired with data {}'.format(
+            self.parent_job.id,
+            self.id,
+            self.needed_locks,
+            self.human_id,
+        ))
+
+    def _free_locks(self):
+        sync_manager.persistent_locks_release(self.needed_locks, check=self.human_id)
+        self.acquired_locks = []
+        logger.info('Job {}, task {}: persistent locks {} released'.format(
+            self.parent_job.id,
+            self.id,
+            self.needed_locks,
+        ))
+
     @classmethod
     def new(cls, job, **kwargs):
         task = cls(job)
@@ -149,6 +218,7 @@ class Task(object):
         self.finish_ts = data['finish_ts']
         self.error_msg = data['error_msg']
         self.attempts = data.get('attempts', 0)
+        self.acquired_locks = data.get('acquired_locks', [])
 
         self.run_history = [
             RunHistoryRecord(run_history_record_data)
@@ -170,6 +240,7 @@ class Task(object):
             'finish_ts': self.finish_ts,
             'error_msg': self.error_msg,
             'attempts': self.attempts,
+            'acquired_locks': self.acquired_locks,
             'run_history': [
                 run_history_record.dump()
                 for run_history_record in self.run_history
@@ -342,3 +413,7 @@ class Task(object):
             self.set_status(Task.STATUS_COMPLETED)
 
         logger.debug('Job {}, task {}: is finished, status {}'.format(self.parent_job.id, self.id, self.status))
+
+    @property
+    def human_id(self):
+        return 'Job {}, task {}'.format(self.parent_job.id, self.id)
