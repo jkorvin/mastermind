@@ -98,6 +98,37 @@ class ZkSyncManager(object):
                 # raising original exception if any
                 raise exc_info[0], exc_info[1], exc_info[2]
 
+    def persistent_locks_are_free(self, locks, timeout=LOCK_TIMEOUT):
+        try:
+            retry = self._retry.copy()
+            result = retry(self._inner_persistent_locks_are_free, locks=locks, timeout=timeout)
+        except RetryFailedError:
+            raise LockError('Failed to check persistent locks {} after several retries'.format(locks))
+        except KazooException as e:
+            logger.exception('Failed to check persistent locks {0}: {1}'.format(locks, e))
+            raise LockError
+        return result
+
+    def _inner_persistent_locks_are_free(self, locks, timeout):
+        statuses = []
+        for lock_id in locks:
+            statuses.append(self.client.exists_async(self.lock_path_prefix + lock_id))
+
+        last_error = None
+        for status in statuses:
+            try:
+                # return ZnodeStat of the node if it exists, else None if the node does not exist
+                if status.get(block=True, timeout=timeout) is not None:
+                    # if any of nodes is exist(i.e. lock is set), when the whole set is not free
+                    return False
+            except Exception as e:
+                last_error = e
+
+        if last_error:
+            # there was error, we cannot answer certainly
+            raise LockError("Failed to check some of persistent locks: {}".format(last_error))
+        return True
+
     def persistent_locks_acquire(self, locks, data='', ephemeral=False):
         try:
             retry = self._retry.copy()

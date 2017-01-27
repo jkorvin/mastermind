@@ -1288,6 +1288,9 @@ def status_change_log(f):
 
 
 class Fs(object):
+    FS_LOCK_PREFIX = 'fs/'
+    FS_LOCK = FS_LOCK_PREFIX + '{}'
+
     def __init__(self, host, fsid):
         self.host = host
         self.fsid = fsid
@@ -1340,6 +1343,9 @@ class Fs(object):
                 self.fsid, [str(nb) for nb in nbs]))
             for nb in nbs:
                 nb.update_status()
+    @property
+    def lock(self):
+        return Fs.FS_LOCK.format(self)
 
     def __repr__(self):
         return '<Fs object: host={host}, fsid={fsid}>'.format(
