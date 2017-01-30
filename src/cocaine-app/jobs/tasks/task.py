@@ -316,8 +316,7 @@ class Task(object):
         except Exception as e:
             logger.exception('Job {}, task {}: failed to update status'.format(self.parent_job.id, self.id))
             self.set_status(Task.STATUS_FAILED, error=e)
-
-            # TODO: should we call _wrapped_on_exec_stop here?
+            self._wrapped_on_exec_stop(processor)
             raise
 
         try:
@@ -329,8 +328,7 @@ class Task(object):
         except Exception as e:
             logger.exception('Job {}, task {}: failed to check status'.format(self.parent_job.id, self.id))
             self.set_status(Task.STATUS_FAILED, error=e)
-
-            # TODO: should we call _wrapped_on_exec_stop here?
+            self._wrapped_on_exec_stop(processor)
             raise
 
         if task_is_failed:
