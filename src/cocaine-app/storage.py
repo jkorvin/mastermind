@@ -1467,6 +1467,7 @@ class NodeBackend(object):
             family=self.node.family,
             backend_id=self.backend_id,
         )
+        res['fs_id'] = self.fs.fsid
         res['host'] = self.node.host.addr
         res['port'] = self.node.port
         res['family'] = self.node.family
