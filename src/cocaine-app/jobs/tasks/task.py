@@ -537,6 +537,16 @@ class Task(object):
             self.status,
         ))
 
+    def proceed(self, processor):
+        if self.status == Task.STATUS_QUEUED:
+            self.start(processor)
+
+        if self.status == Task.STATUS_EXECUTING:
+            self.update(processor)
+
+        if self.status == Task.STATUS_CLEANING:
+            self.clean(processor)
+
     @property
     def human_id(self):
         return 'Job {}, task {}'.format(self.parent_job.id, self.id)

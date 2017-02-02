@@ -354,78 +354,34 @@ class JobProcessor(object):
             if task.status in Task.FINISHED_STATUSES:
                 continue
 
-            if task.status == Task.STATUS_QUEUED:
-                # NOTE: task can change status to 'executing' on this step, then
-                # it is safe to continue task execution
-                try:
-                    task.start(self)
-                except JobBrokenError as e:
-                    job.status = Job.STATUS_BROKEN
-                    job.on_execution_interrupted(error_msg=str(e))
-                    logger.error(
-                        'Job {}, task {}: cannot execute task, not applicable for current storage '
-                        'state: {}'.format(
-                            job.id,
-                            task.id,
-                            e
-                        )
+            try:
+                task.proceed(self)
+            except JobBrokenError as e:
+                job.status = Job.STATUS_BROKEN
+                job.on_execution_interrupted(error_msg=str(e))
+                logger.error(
+                    'Job {}, task {}: cannot proceed task, not applicable for current storage '
+                    'state: {}'.format(
+                        job.id,
+                        task.id,
+                        e,
                     )
-                    break
-                except Exception as e:
-                    job.status = job.STATUS_PENDING
-                    job.on_execution_interrupted(error_msg=str(e))
-                    logger.exception('Job {}, task {}: failed to execute'.format(job.id, task.id))
-                    break
-                finally:
-                    # TODO: move update_ts and _dirty update
-                    job._dirty = True
-                    job.update_ts = time.time()
-
-                job.status = Job.STATUS_EXECUTING
-
-            if task.status == Task.STATUS_EXECUTING:
-                try:
-                    task.update(self)
-                except Exception as e:
-                    job.status = Job.STATUS_PENDING
-                    job.on_execution_interrupted(error_msg=str(e))
-                    break
-
-                if task.status == Task.STATUS_EXECUTING:
-                    # task is still executing, continue with the next job
-                    break
-                else:
-                    # NOTE: this condition serves as optimization to lower mongo update query
-                    # frequency for the job
-                    # TODO: move update_ts and _dirty update (?)
-                    job._dirty = True
-                    job.update_ts = time.time()
-
-            # unite with 2 previous scope
-            if task.status == Task.STATUS_CLEANING:
-                try:
-                    task.clean(self)
-                except JobBrokenError as e:
-                    job.status = Job.STATUS_BROKEN
-                    job.on_execution_interrupted(error_msg=str(e))
-                    logger.error(
-                        'Job {}, task {}: cannot execute task, not applicable for current storage '
-                        'state: {}'.format(
-                            job.id,
-                            task.id,
-                            e
-                        )
-                    )
-                    break
-                except Exception as e:
-                    job.status = job.STATUS_PENDING
-                    job.on_execution_interrupted(error_msg=str(e))
-                    logger.exception('Job {}, task {}: failed to execute'.format(job.id, task.id))
-                    break
-                finally:
-                    # TODO: move update_ts and _dirty update
-                    job._dirty = True
-                    job.update_ts = time.time()
+                )
+                break
+            except Exception as e:
+                logger.exception('Job {}, task {}: failed to proceed task'.format(
+                    job.id,
+                    task.id,
+                ))
+                job.status = Job.STATUS_PENDING
+                job.on_execution_interrupted(error_msg=str(e))
+                break
+            finally:
+                # NOTE: this condition serves as optimization to lower mongo update query
+                # frequency for the job
+                # TODO: move update_ts and _dirty update (?)
+                job._dirty = True
+                job.update_ts = time.time()
 
             if task.status == Task.STATUS_FAILED:
                 job.status = Job.STATUS_PENDING
