@@ -422,61 +422,54 @@ class Task(object):
         if status == Task.STATUS_QUEUED:
             return
 
+    @staticmethod
+    def clean_after_error(allow_retry=False):
+        def wrapper(function):
+            @functools.wraps(function)
+            def wrapped_function(self, processor):
+                try:
+                    return function(self, processor)
+                except RetryError as e:
+                    self.on_run_history_update(error=e)
+                    if allow_retry and self.attempts < JOB_CONFIG.get('minions', {}).get('execute_attempts', 3):
+                        self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_QUEUED
+                        self.clean(processor)
+                        return
+                    self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_FAILED
+                    self.clean(processor)
+                    raise
+                except Exception as e:
+                    self.on_run_history_update(error=e)
+                    self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_FAILED
+                    self.clean(processor)
+                    raise
+
+            return wrapped_function
+        return wrapper
+
+    @clean_after_error.__func__(allow_retry=True)
     def start(self, processor):
         logger.info('Job {}, executing new task {}'.format(self.parent_job.id, self))
 
         self.set_status(Task.STATUS_EXECUTING)
         self.attempts += 1
 
-        try:
-            self._acquire_locks()
-            self._wrapped_on_exec_start(processor)
-            self._start_executing(processor)
-        except RetryError as e:
-            # we need to store a reason of retry attempt
-            self.on_run_history_update(error=e)
-            if self.attempts < JOB_CONFIG.get('minions', {}).get('execute_attempts', 3):
-                self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_QUEUED
-                self.clean(processor)
-                return
-            self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_FAILED
-            self.clean(processor)
-            raise
-        except Exception as e:
-            self.on_run_history_update(e)
-            self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_FAILED
-            self.clean(processor)
-            raise
+        self._acquire_locks()
+        self._wrapped_on_exec_start(processor)
+        self._start_executing(processor)
 
+    @clean_after_error.__func__(allow_retry=True)
     def update(self, processor):
         assert self.status == Task.STATUS_EXECUTING
 
         logger.info('Job {}, task {}: status update'.format(self.parent_job.id, self.id))
 
-        try:
-            self.update_status(processor)
-            if not self.finished(processor):
-                logger.debug('Job {}, task {}: is not finished'.format(self.parent_job.id, self.id))
-                return
-            task_is_failed = self.failed(processor)
-        except RetryError as e:
-            self.on_run_history_update(error=e)
-            if self.attempts < JOB_CONFIG.get('minions', {}).get('execute_attempts', 3):
-                self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_QUEUED
-                self.clean(processor)
-                return
-            self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_FAILED
-            self.clean(processor)
-            raise
-        except Exception as e:
-            # we do not want to clear last_run_history details, since if task fails and is retriable,
-            # then we want to retry it
-            self.on_run_history_update(error=e)
-            self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_FAILED
-            self.clean(processor)
-            raise
+        self.update_status(processor)
+        if not self.finished(processor):
+            logger.debug('Job {}, task {}: is not finished'.format(self.parent_job.id, self.id))
+            return
 
-        if task_is_failed:
+        if self.failed(processor):
             self.set_status(Task.STATUS_CLEANING)
             self.on_run_history_update(error="Task is failed")
             self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_FAILED
