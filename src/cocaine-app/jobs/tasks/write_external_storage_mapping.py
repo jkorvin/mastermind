@@ -38,7 +38,7 @@ class WriteExternalStorageMappingTask(Task):
         # till it completes without an error.
         pass
 
-    def finished(self, processor):
+    def _finished(self, processor):
         self._written = self._try_write_external_storage_mapping(processor.external_storage_meta)
         return (
             self._written or
@@ -53,7 +53,7 @@ class WriteExternalStorageMappingTask(Task):
             namespace=self.namespace,
         )
 
-    def failed(self, processor):
+    def _failed(self, processor):
         return (time.time() - self.start_ts > self.TASK_TIMEOUT and
                 not self._written)
 

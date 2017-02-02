@@ -149,11 +149,23 @@ class Task(object):
     def _update_status(self, processor):
         raise NotImplementedError("Children class should override this function")
 
-    def finished(self, processor):
+    @set_status_to_cleaning_on_error.__func__("failed to update status")
+    def update_status(self, processor):
+        return self._update_status(processor)
+
+    def _finished(self, processor):
         raise NotImplementedError("Children class should override this function")
 
-    def failed(self, processor):
+    @set_status_to_cleaning_on_error.__func__("failed to check status is finished")
+    def finished(self, processor):
+        return self._finished(processor)
+
+    def _failed(self, processor):
         raise NotImplementedError("Children class should override this function")
+
+    @set_status_to_cleaning_on_error.__func__("failed to check status is failed")
+    def failed(self, processor):
+        return self._failed(processor)
 
     @set_status_to_cleaning_on_error.__func__("failed to start execution")
     def _start_executing(self, processor):
@@ -442,24 +454,21 @@ class Task(object):
         logger.info('Job {}, task {}: status update'.format(self.parent_job.id, self.id))
 
         try:
-            self._update_status(processor)
-        except Exception as e:
-            logger.exception('Job {}, task {}: failed to update status'.format(self.parent_job.id, self.id))
-            self.set_status(Task.STATUS_CLEANING)
-            self.on_run_history_update(error=e)
-            self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_FAILED
-            self.clean(processor)
-            raise
-
-        try:
+            self.update_status(processor)
             if not self.finished(processor):
                 logger.debug('Job {}, task {}: is not finished'.format(self.parent_job.id, self.id))
                 return
             task_is_failed = self.failed(processor)
-
+        except RetryError as e:
+            self.on_run_history_update(error=e)
+            if self.attempts < JOB_CONFIG.get('minions', {}).get('execute_attempts', 3):
+                self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_QUEUED
+                self.clean(processor)
+                return
+            self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_FAILED
+            self.clean(processor)
+            raise
         except Exception as e:
-            logger.exception('Job {}, task {}: failed to check status'.format(self.parent_job.id, self.id))
-            self.set_status(Task.STATUS_CLEANING)
             # we do not want to clear last_run_history details, since if task fails and is retriable,
             # then we want to retry it
             self.on_run_history_update(error=e)

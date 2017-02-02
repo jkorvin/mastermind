@@ -29,7 +29,7 @@ class LrcRecoveryTask(MinionCmdTask):
         if group_id not in storage.groups:
             raise JobBrokenError('Group {0} is not found'.format(group_id))
 
-    def failed(self, processor):
+    def _failed(self, processor):
         if self.minion_cmd is None:
             return True
 

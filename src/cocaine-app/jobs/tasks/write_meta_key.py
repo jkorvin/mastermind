@@ -38,7 +38,7 @@ class WriteMetaKeyTask(Task):
         # till it completes without an error.
         pass
 
-    def finished(self, processor):
+    def _finished(self, processor):
         self._meta_key_written = self._try_write_meta_key(processor.session)
         return (
             self._meta_key_written or
@@ -74,7 +74,7 @@ class WriteMetaKeyTask(Task):
 
         return not failed_groups
 
-    def failed(self, processor):
+    def _failed(self, processor):
         return (time.time() - self.start_ts > self.TASK_TIMEOUT and
                 not self._meta_key_written)
 
