@@ -17,8 +17,19 @@ class ExternalStorageDataSizeTask(ExternalStorageTask):
         super(ExternalStorageDataSizeTask, self).__init__(job)
         self.type = TaskTypes.TYPE_EXTERNAL_STORAGE_DATA_SIZE
 
-    def _on_exec_stop(self, processor):
-        if self.cleaning_details[Task.CLEANING_STATUS] == Task.STATUS_COMPLETED:
+    def _task_hooks(self):
+        task_hooks = super(ExternalStorageDataSizeTask, self)._task_hooks()
+
+        def do_nothing(*args, **kwargs):
+            pass
+
+        task_hooks.append(
+            Task.TaskHook(Task.PREPARATION, do_nothing, ExternalStorageDataSizeTask._on_exec_stop),
+        )
+        return task_hooks
+
+    def _on_exec_stop(self, processor, stored_data):
+        if self.execute_was_successful:
 
             command_state = processor.minions_monitor.get_minion_cmd_state(self.minion_cmd)
 

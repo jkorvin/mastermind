@@ -7,6 +7,7 @@ import jobs
 from jobs import JobBrokenError, TaskTypes
 from minion_cmd import MinionCmdTask
 import storage
+from task import Task
 
 
 logger = logging.getLogger('mm.jobs')
@@ -77,6 +78,11 @@ class RsyncBackendTask(MinionCmdTask):
                 raise RuntimeError('Failed to resolve host {0}'.format(host))
         return hostnames
 
+    def _task_hooks(self):
+        return super(RsyncBackendTask, self)._task_hooks().append(
+            Task.TaskHook(Task.PREPARATION, RsyncBackendTask._on_exec_start, RsyncBackendTask._on_exec_stop),
+        )
+
     def _on_exec_start(self, processor):
         hostnames = set(self.__hostnames([self.host, self.src_host]))
 
@@ -121,7 +127,7 @@ class RsyncBackendTask(MinionCmdTask):
             )
             raise
 
-    def _on_exec_stop(self, processor):
+    def _on_exec_stop(self, processor, stored_data):
         hostnames = set(self.__hostnames([self.host, self.src_host]))
 
         dl = jobs.Job.list(processor.downtimes,

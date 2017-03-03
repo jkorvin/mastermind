@@ -4,6 +4,7 @@ from jobs import JobBrokenError, RetryError, TaskTypes
 from minion_cmd import MinionCmdTask
 import storage
 from sync import sync_manager
+from task import Task
 
 
 logger = logging.getLogger('mm.jobs')
@@ -69,6 +70,20 @@ class NodeBackendDefragTask(MinionCmdTask):
         return list(set(super(NodeBackendDefragTask, self).needed_locks).union(
             {storage.node_backends[self.node_backend].fs.lock}
         ))
+
+    def _task_hooks(self):
+        task_hooks = super(NodeBackendDefragTask, self)._task_hooks()
+        task_hooks.append(
+            Task.TaskHook(Task.LOCKS, Task._acquire_locks, Task._release_locks),
+        )
+
+        def do_nothing(*args, **kwargs):
+            pass
+
+        task_hooks.append(
+            Task.TaskHook(Task.PREPARATION, NodeBackendDefragTask._on_exec_start, do_nothing),
+        )
+        return task_hooks
 
     def _execute(self, processor):
         # checking if task still applicable
