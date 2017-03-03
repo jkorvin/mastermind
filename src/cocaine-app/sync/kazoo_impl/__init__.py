@@ -184,6 +184,7 @@ class ZkSyncManager(object):
         return result
 
     def __inner_persistent_locks_release(self, locks, check):
+        e = None
         for lockid in locks:
             try:
                 if check:
@@ -197,11 +198,14 @@ class ZkSyncManager(object):
                                 expected_data=check,
                             )
                         )
-                        raise InconsistentLockError(lock_id=lockid, holder_id=data[0])
+                        e = e or InconsistentLockError(lock_id=lockid, holder_id=data[0])
+                        continue
                 self.client.delete(self.lock_path_prefix + lockid)
             except NoNodeError:
                 logger.warn('Persistent lock {0} is already removed'.format(lockid))
                 pass
+        if e:
+            raise e
         return True
 
 
