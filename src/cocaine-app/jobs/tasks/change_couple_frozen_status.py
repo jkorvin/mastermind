@@ -39,7 +39,7 @@ class ChangeCoupleFrozenStatusTask(Task):
         # till it completes without an error.
         pass
 
-    def finished(self, processor):
+    def _finished(self, processor):
         # TODO: '_meta_key_written' value is not stored and therefore is valid
         # only during one job processor execution cycle. Maybe it should be
         # stored along with other task parameters in db?
@@ -84,7 +84,7 @@ class ChangeCoupleFrozenStatusTask(Task):
 
         return not failed_groups
 
-    def failed(self, processor):
+    def _failed(self, processor):
         """Return True if task failed.
 
         NOTE: this check should be evaluated only if 'finished' check returned True.

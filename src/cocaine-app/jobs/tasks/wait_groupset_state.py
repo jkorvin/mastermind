@@ -35,7 +35,7 @@ class WaitGroupsetStateTask(Task):
     def _execute(self, processor):
         pass
 
-    def finished(self, processor):
+    def _finished(self, processor):
         if self.sleep_period:
             if time.time() - self.start_ts < self.sleep_period:
                 return False
@@ -46,7 +46,7 @@ class WaitGroupsetStateTask(Task):
 
         return self.__state_matched()
 
-    def failed(self, processor):
+    def _failed(self, processor):
         """Return True if task failed.
 
         NOTE: this check should be evaluated only if 'finished' check returned True.

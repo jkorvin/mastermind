@@ -50,7 +50,7 @@ class RecoverGroupDcTask(MinionCmdTask):
         -77,  # File descriptor in bad state (concurrent key write error when CAS is used)
     )
 
-    def failed(self, processor):
+    def _failed(self, processor):
         if self.minion_cmd is None:
             return True
 

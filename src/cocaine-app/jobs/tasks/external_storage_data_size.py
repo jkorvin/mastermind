@@ -3,6 +3,7 @@ import logging
 from jobs import TaskTypes, JobBrokenError
 from external_storage import ExternalStorageTask
 import storage
+from task import Task
 
 
 logger = logging.getLogger('mm.jobs')
@@ -18,8 +19,19 @@ class ExternalStorageDataSizeTask(ExternalStorageTask):
 
     GROUPSET_SELECT_ATTEMPTS = 3
 
-    def _on_exec_stop(self, processor):
-        if self.status == self.STATUS_EXECUTING:
+    def _task_hooks(self):
+        task_hooks = super(ExternalStorageDataSizeTask, self)._task_hooks()
+
+        def do_nothing(*args, **kwargs):
+            pass
+
+        task_hooks.append(
+            Task.TaskHook(Task.PREPARATION, do_nothing, ExternalStorageDataSizeTask._on_exec_stop),
+        )
+        return task_hooks
+
+    def _on_exec_stop(self, processor, stored_data):
+        if self.execution_was_successful:
 
             command_state = processor.minions_monitor.get_minion_cmd_state(self.minion_cmd)
 
