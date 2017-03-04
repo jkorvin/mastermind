@@ -18,19 +18,27 @@ class Task(object):
 
     STATUS_QUEUED = 'queued'
     STATUS_EXECUTING = 'executing'
+    STATUS_CLEANING = 'cleaning'
     STATUS_FAILED = 'failed'
     STATUS_SKIPPED = 'skipped'
     STATUS_COMPLETED = 'completed'
-    ALL_STATUSES = (STATUS_QUEUED, STATUS_EXECUTING, STATUS_FAILED, STATUS_SKIPPED, STATUS_COMPLETED)
+    ALL_STATUSES = (STATUS_QUEUED, STATUS_EXECUTING, STATUS_FAILED, STATUS_SKIPPED,
+                    STATUS_COMPLETED, STATUS_CLEANING)
 
     PREVIOUS_STATUSES = {
         STATUS_QUEUED: (STATUS_FAILED,),
         STATUS_EXECUTING: (STATUS_QUEUED,),
-        STATUS_COMPLETED: (STATUS_EXECUTING,),
-        STATUS_FAILED: (STATUS_EXECUTING, STATUS_FAILED),
+        STATUS_COMPLETED: (STATUS_CLEANING,),
+        STATUS_FAILED: (STATUS_CLEANING,),
+        STATUS_CLEANING: (STATUS_EXECUTING, STATUS_CLEANING),
         STATUS_SKIPPED: (STATUS_FAILED,),
     }
     FINISHED_STATUSES = (STATUS_SKIPPED, STATUS_COMPLETED)
+
+    CLEANING_LOCKS = "acquire_persistent_locks"
+    CLEANING_PREPARATION = "preparation"
+    CLEANING_STATUS = "status_after_clean_step"
+    CLEANING_STATUSES = (STATUS_QUEUED, STATUS_FAILED, STATUS_COMPLETED)
 
     def __init__(self, job):
         self._status = Task.STATUS_QUEUED
@@ -42,19 +50,18 @@ class Task(object):
         self.error_msg = []
         self.run_history = []
         self.parent_job = job
-        self.acquired_locks = []
+        self.cleaning_details = {}
 
     @staticmethod
-    def set_status_to_failed_on_error(error_description):
+    def set_status_to_cleaning_on_error(error_description):
         def wrapper(function):
             @functools.wraps(function)
             def wrapped_function(self, *args, **kwargs):
                 try:
                     return function(self, *args, **kwargs)
                 except RetryError as e:
-                    # TODO make retry logic here, not FAILED!
                     logger.error('Job {}, task {}: retry error: {}'.format(self.parent_job.id, self.id, e))
-                    self.set_status(Task.STATUS_FAILED, error=e)
+                    self.set_status(Task.STATUS_CLEANING)
                     raise
                 except Exception as e:
                     logger.exception('Job {}, task {}: {}'.format(
@@ -62,7 +69,7 @@ class Task(object):
                         self.id,
                         error_description,
                     ))
-                    self.set_status(Task.STATUS_FAILED, error=e)
+                    self.set_status(Task.STATUS_CLEANING)
                     raise
             return wrapped_function
         return wrapper
@@ -74,14 +81,10 @@ class Task(object):
         """
         pass
 
-    @set_status_to_failed_on_error.__func__("failed to execute task start handler")
+    @set_status_to_cleaning_on_error.__func__("failed to execute task start handler")
     def _wrapped_on_exec_start(self, processor):
-        self._acquire_locks()
-        try:
-            self._on_exec_start(processor)
-        except:
-            self._free_locks()
-            raise
+        self.cleaning_details[Task.CLEANING_PREPARATION] = self._on_exec_start(processor)
+        logger.info('Job {}, task {}: preparation completed'.format(self.parent_job.id, self.id))
 
     # self.status is an indicator either task is successfully finished or not
     def _on_exec_stop(self, processor):
@@ -91,16 +94,18 @@ class Task(object):
         """
         pass
 
-    @set_status_to_failed_on_error.__func__("failed to execute task stop handler")
+    @set_status_to_cleaning_on_error.__func__("failed to execute task stop handler")
     def _wrapped_on_exec_stop(self, processor):
-        try:
+        if Task.CLEANING_PREPARATION in self.cleaning_details:
             self._on_exec_stop(processor)
-        finally:
-            self._free_locks()
+            logger.info('Job {}, task {}: postprocessing completed'.format(self.parent_job.id, self.id))
+            del self.cleaning_details[Task.CLEANING_PREPARATION]
 
     def _execute(self, processor):
         """
         Should not be called directly, use _start_executing(self, processor) instead
+        If an exception is occurred, you can raise RetryError in attempt to retry the task,
+        if current state of the task is the same as before this ._execute(_) was called.
         """
         raise NotImplementedError("Children class should override this function")
 
@@ -116,12 +121,30 @@ class Task(object):
         """
         raise NotImplementedError("Children class should override this function")
 
-    @set_status_to_failed_on_error.__func__("failed to stop task")
+    @set_status_to_cleaning_on_error.__func__("failed to stop task")
     def stop(self, processor):
-        self._terminate(processor)
-        # if termination is failed, _wrapped_on_exec_stop is not safe to call
-        self.set_status(Task.STATUS_FAILED, "Task is stopped")
-        self._wrapped_on_exec_stop(processor)
+        # after task is executed, it can leave some data in last_run_history_record,
+        # which lead to self.next_retry_ts != None
+        # to prevent this we need to clear last_run_history_record
+        self._add_history_record()
+        self.on_run_history_update(error="Task is stopped")
+
+        if self.status == Task.STATUS_EXECUTING:
+            # if termination is raise exception, then we can't to call cleaning safe
+            # (probably we can, but initially we don't do this)
+            self._terminate(processor)
+
+            self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_FAILED
+            self.set_status(Task.STATUS_CLEANING)
+
+            self.clean(processor)
+        else:
+            assert self.status == Task.STATUS_CLEANING
+            self.set_status(Task.STATUS_FAILED)
+
+        # if RetryError is raised during cleanup phase, then self.status == STATUS_CLEANING
+        if self.status != self.STATUS_FAILED:
+            raise RuntimeError("We terminated task, but failed to cleanup after")
 
     def _update_status(self, processor):
         raise NotImplementedError("Children class should override this function")
@@ -132,14 +155,20 @@ class Task(object):
     def failed(self, processor):
         raise NotImplementedError("Children class should override this function")
 
+    @set_status_to_cleaning_on_error.__func__("failed to start execution")
     def _start_executing(self, processor):
         self.start_ts, self.finish_ts = time.time(), None
         self._execute(processor)
+        logger.info('Job {}, task {}: execution successfully started'.format(
+            self.parent_job.id,
+            self.id
+        ))
 
     @property
     def needed_locks(self):
         return []
 
+    @set_status_to_cleaning_on_error.__func__("failed to acquire persistent locks")
     def _acquire_locks(self):
         logger.info('Job {}, task {}: try to acquire persistent locks {}, with data {}'.format(
             self.parent_job.id,
@@ -176,7 +205,7 @@ class Task(object):
         except LockError as e:
             raise RetryError(self.attempts, e)
 
-        self.acquired_locks = self.needed_locks
+        self.cleaning_details[Task.CLEANING_LOCKS] = self.needed_locks
 
         logger.info('Job {}, task {}: persistent locks {} are acquired with data {}'.format(
             self.parent_job.id,
@@ -185,13 +214,40 @@ class Task(object):
             self.human_id,
         ))
 
+    @set_status_to_cleaning_on_error.__func__("failed to release persistent locks")
     def _free_locks(self):
-        sync_manager.persistent_locks_release(self.needed_locks, check=self.human_id)
-        self.acquired_locks = []
+        if Task.CLEANING_LOCKS not in self.cleaning_details:
+            return
+
+        lock_to_release = self.cleaning_details[Task.CLEANING_LOCKS]
+        logger.info('Job {}, task {}: try to release persistent locks {}'.format(
+            self.parent_job.id,
+            self.id,
+            lock_to_release,
+        ))
+        try:
+            sync_manager.persistent_locks_release(lock_to_release, check=self.human_id)
+        except InconsistentLockError as e:
+            logger.error(
+                'Job {}, task {}: some of the locks {} are already acquired by someone else'.format(
+                    self.parent_job.id,
+                    self.id,
+                    self.needed_locks,
+                    e.holder_id
+                )
+            )
+            # InconsistentLockError means, locks are free from us
+            # (also, that someone is already acquired one of them)
+            pass
+        except LockError as e:
+            raise RetryError(self.attempts, e)
+
+        del self.cleaning_details[Task.CLEANING_LOCKS]
+
         logger.info('Job {}, task {}: persistent locks {} released'.format(
             self.parent_job.id,
             self.id,
-            self.needed_locks,
+            lock_to_release,
         ))
 
     @classmethod
@@ -216,7 +272,7 @@ class Task(object):
         self.finish_ts = data['finish_ts']
         self.error_msg = data['error_msg']
         self.attempts = data.get('attempts', 0)
-        self.acquired_locks = data.get('acquired_locks', [])
+        self.cleaning_details = data.get('cleaning_details', {})
 
         self.run_history = [
             RunHistoryRecord(run_history_record_data)
@@ -238,7 +294,7 @@ class Task(object):
             'finish_ts': self.finish_ts,
             'error_msg': self.error_msg,
             'attempts': self.attempts,
-            'acquired_locks': self.acquired_locks,
+            'cleaning_details': self.cleaning_details,
             'run_history': [
                 run_history_record.dump()
                 for run_history_record in self.run_history
@@ -288,6 +344,8 @@ class Task(object):
             last_record.delayed_till_ts = self.next_retry_ts
         else:
             last_record.status = 'success'
+            last_record.delayed_till_ts = None
+            last_record.error_msg = None
 
     def ready_for_retry(self, processor):
         if not self.run_history:
@@ -312,7 +370,7 @@ class Task(object):
     def status(self):
         return self._status
 
-    def set_status(self, status, error=None):
+    def set_status(self, status):
         if status not in Task.ALL_STATUSES:
             raise ValueError(
                 "Attempt to change task status, unknown value: {}. Accepted statuses: {}".format(
@@ -322,59 +380,60 @@ class Task(object):
             )
 
         if self._status not in Task.PREVIOUS_STATUSES[status]:
-            error_msg = "(local error: {})".format(error) if error else ""
             raise ValueError(
                 'Job {job_id}, task {task_id}: attempt to change task status to {new}, '
-                'current status is {current}, but expected one of {expected}.{error_msg}'.format(
+                'current status is {current}, but expected one of {expected}'.format(
                     job_id=self.parent_job.id,
                     task_id=self.id,
                     new=status,
                     current=self.status,
                     expected=Task.PREVIOUS_STATUSES[status],
-                    error_msg=error_msg,
                 )
             )
 
         self._status = status
 
+        if status == Task.STATUS_CLEANING:
+            return
+
         if status in (Task.STATUS_FAILED, Task.STATUS_COMPLETED):
-            self.on_run_history_update(error=error)
+            # this attempt ended, so expected status is no more necessary
+            del self.cleaning_details[Task.CLEANING_STATUS]
             return
 
         if status == Task.STATUS_EXECUTING:
+            # by default we expect, that status of current attempt will be STATUS_COMPLETED
+            self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_COMPLETED
             self._add_history_record()
             return
 
         if status == Task.STATUS_QUEUED:
             return
 
-    def _start_task(self, processor):
+    def start(self, processor):
         logger.info('Job {}, executing new task {}'.format(self.parent_job.id, self))
 
         self.set_status(Task.STATUS_EXECUTING)
-
-        self._wrapped_on_exec_start(processor)
-        logger.info('Job {}, task {}: preparation completed'.format(self.parent_job.id, self.id))
+        self.attempts += 1
 
         try:
-            self.attempts += 1
+            self._acquire_locks()
+            self._wrapped_on_exec_start(processor)
             self._start_executing(processor)
-            logger.info('Job {}, task {}: execution successfully started'.format(
-                self.parent_job.id,
-                self.id
-            ))
         except RetryError as e:
-            logger.error('Job {}, task {}: retry error: {}'.format(self.parent_job.id, self.id, e))
-            self.set_status(Task.STATUS_FAILED, error=e)
-            self._wrapped_on_exec_stop(processor)
+            # we need to store a reason of retry attempt
+            self.on_run_history_update(error=e)
             if self.attempts < JOB_CONFIG.get('minions', {}).get('execute_attempts', 3):
-                self.set_status(Task.STATUS_QUEUED)
+                self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_QUEUED
+                self.clean(processor)
                 return
+            self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_FAILED
+            self.clean(processor)
             raise
         except Exception as e:
-            logger.exception('Job {}, task {}: failed to execute task'.format(self.parent_job.id, self.id))
-            self.set_status(Task.STATUS_FAILED, error=e)
-            self._wrapped_on_exec_stop(processor)
+            self.on_run_history_update(e)
+            self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_FAILED
+            self.clean(processor)
             raise
 
     def update(self, processor):
@@ -386,8 +445,10 @@ class Task(object):
             self._update_status(processor)
         except Exception as e:
             logger.exception('Job {}, task {}: failed to update status'.format(self.parent_job.id, self.id))
-            self.set_status(Task.STATUS_FAILED, error=e)
-            self._wrapped_on_exec_stop(processor)
+            self.set_status(Task.STATUS_CLEANING)
+            self.on_run_history_update(error=e)
+            self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_FAILED
+            self.clean(processor)
             raise
 
         try:
@@ -398,19 +459,83 @@ class Task(object):
 
         except Exception as e:
             logger.exception('Job {}, task {}: failed to check status'.format(self.parent_job.id, self.id))
-            self.set_status(Task.STATUS_FAILED, error=e)
-            self._wrapped_on_exec_stop(processor)
+            self.set_status(Task.STATUS_CLEANING)
+            # we do not want to clear last_run_history details, since if task fails and is retriable,
+            # then we want to retry it
+            self.on_run_history_update(error=e)
+            self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_FAILED
+            self.clean(processor)
             raise
 
         if task_is_failed:
-            self.set_status(Task.STATUS_FAILED)
-
-        self._wrapped_on_exec_stop(processor)
-
-        if not task_is_failed:
-            self.set_status(Task.STATUS_COMPLETED)
+            self.set_status(Task.STATUS_CLEANING)
+            self.on_run_history_update(error="Task is failed")
+            self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_FAILED
+        else:
+            self.set_status(Task.STATUS_CLEANING)
+            # when status was changed to STATUS_EXECUTING, self.cleaning_details[Task.CLEANING_STATUS]
+            # was already set to Task.STATUS_COMPLETED
 
         logger.debug('Job {}, task {}: is finished, status {}'.format(self.parent_job.id, self.id, self.status))
+
+    def clean(self, processor):
+        logger.info('Job {}, task {}: start cleaning'.format(self.parent_job.id, self.id))
+        assert self.status == Task.STATUS_CLEANING
+
+        clean_functions = (
+            functools.partial(Task._wrapped_on_exec_stop, self, processor),
+            functools.partial(Task._free_locks, self),
+        )
+        for function in clean_functions:
+            try:
+                function()
+            except RetryError as e:
+                if self.attempts < JOB_CONFIG.get('minions', {}).get('execute_attempts', 3):
+                    self.attempts += 1
+                    logger.debug('Job {}, task {}: cleanup will continue at the next attempt'.format(
+                        self.parent_job.id,
+                        self.id,
+                    ))
+                    return
+                # after task is executed, it can leave some data in last_run_history_record,
+                # which lead to self.next_retry_ts != None
+                # to prevent this we need to clear last_run_history_record
+                self._add_history_record()
+                self.on_run_history_update(error=e)
+                self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_FAILED
+                pass
+            except Exception as e:
+                # after task is executed, it can leave some data in last_run_history_record,
+                # which lead to self.next_retry_ts != None
+                # to prevent this we need to clear last_run_history_record
+                self._add_history_record()
+                self.on_run_history_update(error=e)
+                self.cleaning_details[Task.CLEANING_STATUS] = Task.STATUS_FAILED
+                pass
+
+        if self.cleaning_details[Task.CLEANING_STATUS] not in Task.CLEANING_STATUSES:
+            raise RuntimeError("Unexpected status after cleaning {}, expected one of {}".format(
+                self.cleaning_details[Task.CLEANING_STATUS],
+                Task.CLEANING_STATUSES,
+            ))
+
+        if self.cleaning_details[Task.CLEANING_STATUS] == Task.STATUS_QUEUED:
+            self.set_status(Task.STATUS_FAILED)
+            self.set_status(Task.STATUS_QUEUED)
+        else:
+            self.set_status(self.cleaning_details[Task.CLEANING_STATUS])
+
+        # if task is successfully finished, then self.status == Task.STATUS_COMPLETED
+        # and self.last_run_history_record.error_msg == None;
+        # if error was stored in last_run_history_record, then task is not finished
+        if self.status == Task.STATUS_COMPLETED:
+            self.on_run_history_update()
+
+        logger.info('Job {}, task {}: cleaning successfully finished, following task status {}'.format(
+            self.parent_job.id,
+            self.id,
+            self.status,
+        ))
 
     @property
     def human_id(self):

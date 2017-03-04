@@ -3,6 +3,7 @@ import logging
 from jobs import TaskTypes, JobBrokenError
 from external_storage import ExternalStorageTask
 import storage
+from task import Task
 
 
 logger = logging.getLogger('mm.jobs')
@@ -17,7 +18,7 @@ class ExternalStorageDataSizeTask(ExternalStorageTask):
         self.type = TaskTypes.TYPE_EXTERNAL_STORAGE_DATA_SIZE
 
     def _on_exec_stop(self, processor):
-        if self.status == self.STATUS_EXECUTING:
+        if self.cleaning_details[Task.CLEANING_STATUS] == Task.STATUS_COMPLETED:
 
             command_state = processor.minions_monitor.get_minion_cmd_state(self.minion_cmd)
 

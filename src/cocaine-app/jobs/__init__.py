@@ -358,7 +358,7 @@ class JobProcessor(object):
                 # NOTE: task can change status to 'executing' on this step, then
                 # it is safe to continue task execution
                 try:
-                    task._start_task(self)
+                    task.start(self)
                 except JobBrokenError as e:
                     job.status = Job.STATUS_BROKEN
                     job.on_execution_interrupted(error_msg=str(e))
@@ -398,6 +398,32 @@ class JobProcessor(object):
                     # NOTE: this condition serves as optimization to lower mongo update query
                     # frequency for the job
                     # TODO: move update_ts and _dirty update (?)
+                    job._dirty = True
+                    job.update_ts = time.time()
+
+            # unite with 2 previous scope
+            if task.status == Task.STATUS_CLEANING:
+                try:
+                    task.clean(self)
+                except JobBrokenError as e:
+                    job.status = Job.STATUS_BROKEN
+                    job.on_execution_interrupted(error_msg=str(e))
+                    logger.error(
+                        'Job {}, task {}: cannot execute task, not applicable for current storage '
+                        'state: {}'.format(
+                            job.id,
+                            task.id,
+                            e
+                        )
+                    )
+                    break
+                except Exception as e:
+                    job.status = job.STATUS_PENDING
+                    job.on_execution_interrupted(error_msg=str(e))
+                    logger.exception('Job {}, task {}: failed to execute'.format(job.id, task.id))
+                    break
+                finally:
+                    # TODO: move update_ts and _dirty update
                     job._dirty = True
                     job.update_ts = time.time()
 
@@ -558,7 +584,7 @@ class JobProcessor(object):
 
         for job in executing_jobs:
             for task in job.tasks:
-                if task.status == Task.STATUS_EXECUTING:
+                if task.status in (Task.STATUS_EXECUTING, Task.STATUS_CLEANING):
                     task.stop(self)
                     logging.info("Job {}, task {}: cancelled".format(job.id, task.id))
                     break
