@@ -47,7 +47,7 @@ class MinionCmdTask(Task):
                 )
             )
             return
-        self._set_run_history_parameters(self.minion_cmd)
+        self._set_run_history_parameters()
 
     def _execute(self, processor):
         try:
@@ -76,7 +76,7 @@ class MinionCmdTask(Task):
             )
         )
 
-    def _set_run_history_parameters(self, minion_cmd):
+    def _set_run_history_parameters(self):
         if not self.run_history:
             return
         record = self.last_run_history_record
