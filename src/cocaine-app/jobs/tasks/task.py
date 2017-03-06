@@ -48,6 +48,11 @@ class Task(object):
             def wrapped_function(self, *args, **kwargs):
                 try:
                     return function(self, *args, **kwargs)
+                except RetryError as e:
+                    # TODO make retry logic here, not FAILED!
+                    logger.error('Job {}, task {}: retry error: {}'.format(self.parent_job.id, self.id, e))
+                    self.set_status(Task.STATUS_FAILED, error=e)
+                    raise
                 except Exception as e:
                     logger.exception('Job {}, task {}: {}'.format(
                         self.parent_job.id,
