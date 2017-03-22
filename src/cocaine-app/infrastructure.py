@@ -1230,16 +1230,17 @@ class Infrastructure(object):
                 full_path = nb.node.host.full_path
             except CacheUpstreamError:
                 logger.warn('Skipping {} because of cache failure'.format(
-                    nb.node.host))
+                    nb.node.host
+                ))
                 continue
 
             if full_path not in nodes['host']:
                 logger.warn('Host {0} is not found in cluster tree'.format(full_path))
                 continue
-            if nb.stat is None:
+            if nb.fs is None:
                 continue
 
-            fsid = str(nb.stat.fsid)
+            fsid = str(nb.fs.fsid)
             fsid_full_path = full_path + '|' + fsid
             if fsid_full_path not in nodes['hdd']:
                 hdd_node = {
@@ -1388,8 +1389,9 @@ class Infrastructure(object):
                     logger.error('No groups in child {0}'.format(child))
                 ns_current_state[node_type]['nodes'][child['full_path']] = len(child.get('groups', []))
             ns_current_state[node_type]['avg'] = (
-                float(sum(ns_current_state[node_type]['nodes'].values())) /
-                len(nodes[node_type]))
+                float(sum(ns_current_state[node_type]['nodes'].itervalues())) /
+                len(nodes[node_type])
+            )
         return ns_current_state
 
     def groups_units(self, groups, types):
@@ -1397,6 +1399,7 @@ class Infrastructure(object):
 
         for group in groups:
             if group.group_id in units:
+                # TODO add comment how it is possible and why we want to skip it
                 continue
             for nb in group.node_backends:
 

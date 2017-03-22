@@ -85,8 +85,6 @@ class NamespacesQuery(Query):
         Args:
           namespace:
             id of namespace that is being set up
-          overwrite: set namespace settings from scratch using only currently
-            provided options
           static_couple: static couple's string identificator. Used when namespace
             does not store metainformation and therefore group balancing is not
             applicable.
@@ -98,7 +96,7 @@ class NamespacesQuery(Query):
           sign_path_prefix: signature path prefix
           min_units: minimal number of couples available for write operations
             when namespace is considered available
-          add_unit: number of additional couples with positive weights
+          add_units: number of additional couples with positive weights
             that mastermind will add to namespace group weights if available
           redirect_content_length_threshold: content length threshold for
             proxy to return direct urls instead of balancer urls
@@ -388,7 +386,7 @@ class NamespaceQuery(Query):
           couple_size:
             a number of groups to couple together.
           init_state:
-            couple init state (should take one of COUPLE_INIT_*_STATE values).
+            couple init state (should take one of VALID_COUPLE_INIT_STATES values).
 
         KwArgs:
           couples:
@@ -396,11 +394,11 @@ class NamespaceQuery(Query):
           namespace:
             all created couples will belong to provided namespace.
           groups:
-            iterable of sets of mandatory groups that should be coupled together:
+            iterable of sets of mandatory groups that should be coupled together to create replica groupset:
             Example: ((42, 69), # groups 42 and 69 will be included in the first created couple,
-                      (128))    # group 128 will be included in the second one, and so on.
+                      (128, ))    # group 128 will be included in the second one, and so on.
           ignore_space:
-            if this flag is set to True mastermind will couple only the groups
+            if this flag is set to False mastermind will couple only the groups
             having equal total space
           group_total_space:
             Use groups of certain total space for building couples (e.g., 916G, 256m)
@@ -437,6 +435,7 @@ class NamespaceQuery(Query):
         for couple_data in self.client.request('build_couples', params,
                                                attempts=attempts, timeout=timeout):
             if isinstance(couple_data, basestring):
+                # error was occurred as we try to build couple and we write this error instead of couple data
                 created_couples.append(couple_data)
                 continue
             c = Couple(Couple._raw_id(couple_data), self.client)

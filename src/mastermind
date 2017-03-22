@@ -122,9 +122,19 @@ def to_gb(bytes):
     return bytes / (1024.0 * 1024.0 * 1024.0)
 
 
+FIELD_TO_CONVERT = (
+    'free_space',
+    'free_effective_space',
+    'used_space',
+    'total_space',
+    'records_removed_size',
+    'free_reserved_space',
+    'effective_space',
+)
+
+
 def convert_stats(d):
-    for k in ('free_space', 'free_effective_space', 'used_space',
-              'total_space', 'records_removed_size', 'free_reserved_space'):
+    for k in FIELD_TO_CONVERT:
         if k in d:
             d[k] = '{0:.3f} Gb'.format(to_gb(d[k]))
     if 'fragmentation' in d:
@@ -370,6 +380,11 @@ def couple_info(group, host=None, app=None):
     for group in res.get('groups', []):
         for node in group.get('node_backends', []):
             convert_stats(node)
+    for groupset in res.get('groupsets', {}).itervalues():
+        for group in groupset.get('groups', []):
+            for node in group.get('node_backends', []):
+                convert_stats(node)
+
     if 'id' in res:
         convert_stats(res)
 
@@ -515,6 +530,9 @@ def _couple_list(namespace=None,
                     # entity is couple
                     for group in entity.get('groups', []):
                         convert_group_stats(group)
+                    for groupset in entity.get('groupsets', {}).itervalues():
+                        for group in groupset.get('groups', []):
+                            convert_group_stats(group)
                     convert_stats(entity)
                 else:
                     # entity is group

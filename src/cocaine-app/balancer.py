@@ -652,12 +652,16 @@ class Balancer(object):
 
     @staticmethod
     def _remove_unusable_groups(groups_by_total_space, groups):
-        groups_to_remove = groups[:]
+        groups_to_remove = set(groups)
         for ts, group_ids in groups_by_total_space.iteritems():
-            for group_to_remove in groups_to_remove[:]:
+            removed_groups = set()
+
+            for group_to_remove in groups_to_remove:
                 if group_to_remove in group_ids:
                     group_ids.remove(group_to_remove)
-                    groups_to_remove.remove(group_to_remove)
+                    removed_groups.add(group_to_remove)
+
+            groups_to_remove -= removed_groups
 
     @contextmanager
     def _locked_uncoupled_groups(self, uncoupled_groups, groups_by_total_space, comment=''):
@@ -708,7 +712,8 @@ class Balancer(object):
                     for group_ids in groups_by_total_space.itervalues()
                     for group_id in group_ids
                 ],
-                self.NODE_TYPES)
+                self.NODE_TYPES,
+            )
 
         except Exception as e:
             logger.exception('Failed to build couples')
@@ -724,22 +729,26 @@ class Balancer(object):
                 if len(mandatory_groups) > size:
                     raise ValueError(
                         "Mandatory groups list's {} length is greater than couple "
-                        "size {}".format(mandatory_groups, size))
+                        "size {}".format(mandatory_groups, size)
+                    )
 
                 for m_group in mandatory_groups:
                     if m_group not in units:
                         raise ValueError(
                             'Mandatory group {0} is either not found '
                             'in cluster, is not uncoupled, is located on a locked host or '
-                            'is unsuitable in some other way'.format(m_group))
+                            'is unsuitable in some other way'.format(m_group)
+                        )
 
                 if mandatory_groups:
                     self.infrastructure.account_ns_groups(
-                        nodes, [storage.groups[g] for g in mandatory_groups])
+                        nodes, [storage.groups[g] for g in mandatory_groups]
+                    )
                     self.infrastructure.update_groups_list(tree)
 
                 ns_current_state = self.infrastructure.ns_current_state(
-                    nodes, self.NODE_TYPES[1:])
+                    nodes, self.NODE_TYPES[1:]
+                )
 
                 couple = self._build_couple(
                     ns_current_state, units, size,
@@ -747,7 +756,8 @@ class Balancer(object):
                     namespace=options['namespace'],
                     init_state=options['init_state'],
                     groupsets=options['groupsets'],
-                    dry_run=options['dry_run'])
+                    dry_run=options['dry_run'],
+                )
 
                 self.infrastructure.account_ns_groups(nodes, couple.groups)
                 self.infrastructure.update_groups_list(tree)
@@ -760,6 +770,7 @@ class Balancer(object):
                 res.append(str(e))
                 continue
 
+        # TODO check is it really extend? if not, then remove this code
         res.extend(['Not enough valid dcs and/or groups of appropriate '
                     'total space for remaining couples creation'] * (couples - len(res)))
 
@@ -779,7 +790,7 @@ class Balancer(object):
                 comb_groups_count.setdefault(unit, 0)
                 comb_groups_count[unit] += 1
         return sum((c - ns_current_type_state['avg']) ** 2
-                   for c in comb_groups_count.values())
+                   for c in comb_groups_count.itervalues())
 
     def __weight_couple_groups(self, ns_current_state, units, group_ids):
         weight = []
@@ -796,10 +807,13 @@ class Balancer(object):
         return weight
 
     def __choose_groups(self, ns_current_state, units, count, group_ids, levels, mandatory_groups):
+        # this function recursively called itself
+        # at the first call we are ignoring 'root' level
         levels = levels[1:]
         node_type = levels[0]
         logger.info('Selecting {0} groups on level {1} among groups {2}'.format(
-            count, node_type, group_ids))
+            count, node_type, group_ids
+        ))
 
         if len(group_ids) < count:
             logger.warn(
@@ -814,6 +828,10 @@ class Balancer(object):
 
         groups_by_level_units = {}
         for group_id in group_ids:
+            # Generally level_units looks like:
+            # ('dc_name_of_first_backend', 'dc_name_of_second_backend', ...) if node_type = DC_NODE_TYPE.
+            # In case each group has only one dc, it looks like ('dc_name_of_first_backend', ).
+            # on lower level names are more complicated: 'dc_name|host_name|hdd_name' for each backend
             level_units = tuple(gp[node_type] for gp in units[group_id])
             groups_by_level_units.setdefault(level_units, []).append(group_id)
 
@@ -825,6 +843,13 @@ class Balancer(object):
         choice_list = []
         for choice, groups in groups_by_level_units.iteritems():
             choice_list.extend([choice] * min(count, len(groups)))
+        # Example of choice_list in general case:
+        # Let group 1 have two backends in datacenter dc1 and dc2, group 2 is similar,
+        # group 3 have three backends in datacenter dc3, then for node_type = DC_NODE_TYPE.
+        # If count >= 2, then choice_list = [ (dc1, dc2), (dc1, dc2), (dc3, dc3, dc3), ].
+        #
+        # In case each group have only one backend:
+        # choice_list looks like [(dc1, ), (dc1, ), (dc2, ), ... ]
 
         logger.info('Nodes type: {0}, choice list: {1}'.format(node_type, choice_list))
 
@@ -840,9 +865,13 @@ class Balancer(object):
 
         for comb in comb_set:
             if config.get('forbidden_dc_sharing_among_groups', False) and node_type == self.DC_NODE_TYPE:
+                # Note: we also forbid dc sharing inside each group, example with mandatory_groups_units = []:
+                # let size of couple = 1, and we have a group with 2 nb each in dc1, then
+                # comb = ((dc1, dc1), ), comb_units = (dc1, dc1), unique_units = set(( dc1 ))
+                # then len(comb_units) + len(mandatory_groups_units) > len(unique_units)
                 comb_units = list(reduce(operator.add, comb))
                 unique_units = set(comb_units) | set(mandatory_groups_units)
-                if (len(comb_units + mandatory_groups_units) != len(unique_units)):
+                if len(comb_units) + len(mandatory_groups_units) != len(unique_units):
                     continue
             weights[comb] = self.__weight_combination(ns_current_state[node_type], comb)
 
@@ -854,18 +883,20 @@ class Balancer(object):
             return []
 
         logger.info('Combination weights: {0}'.format(weights))
-        sorted_weights = sorted(weights.items(), key=lambda x: x[1])
+        sorted_weights = sorted(weights.iteritems(), key=lambda x: x[1])
+        best_comb, best_weight = sorted_weights[0]
 
-        logger.info('Least weight combination: {0}'.format(sorted_weights[0]))
+        logger.info('Least weight combination: ({0}, {1})'.format(best_comb, best_weight))
 
         node_counts = {}
-        for node in sorted_weights[0][0]:
-            node_counts.setdefault(node, 0)
-            node_counts[node] += 1
+        for level_units in best_comb:
+            node_counts.setdefault(level_units, 0)
+            node_counts[level_units] += 1
 
         logger.info('Level {0}: selected units: {1}'.format(node_type, node_counts))
 
         if len(levels) == 1:
+            # level contains only lowest level of node type, for example 'hdd'
             groups = reduce(
                 operator.add,
                 (groups_by_level_units[level_units][:_count]
@@ -891,6 +922,12 @@ class Balancer(object):
             )
             return []
 
+        # TODO if len(levels) == 1, then we can update ns_current_state with chosen groups.
+        # In this case we will calculate weights better during the following call of __choose_groups.
+        # If we update it, then we need to copy ns_current_state before first calling of this function,
+        # since we will change this variable.
+        # But in case each group have only one backend (currently it is the only case),
+        # there will be no difference between current algorithm and updated one.
         return groups
 
     def _build_couple(self,
@@ -919,7 +956,8 @@ class Balancer(object):
 
         while True:
             groups_to_couple = self.__choose_groups_to_couple(
-                ns_current_state, units, size, groups_by_total_space, mandatory_groups)
+                ns_current_state, units, size, groups_by_total_space, mandatory_groups
+            )
 
             if not groups_to_couple:
                 raise RuntimeError("Failed to find groups to couple")
@@ -931,6 +969,11 @@ class Balancer(object):
                     scheme = storage.Lrc.make_scheme(groupset['settings']['scheme'])
                     builder = scheme.builder(job_processor=self.job_processor)
                     try:
+                        # groupset generated from lrc_uncoupled_group_ids and groups_to_couple
+                        # should have equal sizes, but there is no logic that will lead to equality;
+                        # currently lrc_uncoupled_group_ids generated only by tests and
+                        # settings in config files lead to equality of these size.
+                        # TODO Add logic that will verify that equality.
                         lrc_uncoupled_group_ids = next(
                             builder.select_uncoupled_groups(
                                 skip_groups=groups_to_couple,
@@ -939,6 +982,8 @@ class Balancer(object):
                     except StopIteration:
                         raise RuntimeError("Failed to find appropriate groups for LRC groupset construction")
                     groupsets_groups.append(lrc_uncoupled_group_ids)
+                else:
+                    raise RuntimeError("Unknown groupset type: {}, expected: ('lrc', )".format(groupset['type']))
 
             involved_groups = groups_to_couple + [
                 group_id
@@ -950,9 +995,10 @@ class Balancer(object):
                                                groups_by_total_space,
                                                'couple build') as locked_uncoupled_group_ids:
 
-                if involved_groups != locked_uncoupled_group_ids:
+                if len(involved_groups) != len(locked_uncoupled_group_ids):
                     logger.warn('Failed to lock all uncoupled groups: locked {} / {}'.format(
-                        locked_uncoupled_group_ids, involved_groups))
+                        locked_uncoupled_group_ids, involved_groups
+                    ))
                     continue
 
                 logger.info('Chosen groups to couple: {0}'.format(groups_to_couple))
@@ -989,7 +1035,18 @@ class Balancer(object):
                                 couple
                             ))
                             couple_groupsets.append(couple_groupset)
+                            if couple.lrc822v1_groupset:
+                                raise RuntimeError(
+                                    'Couple is allowed to contain only one groupset for each type: '
+                                    'lrc822v1_groupset for couple {0} was already set'.format(couple)
+                                )
                             couple.lrc822v1_groupset = couple_groupset
+                        else:
+                            raise RuntimeError('Internal logic error: lrc scheme {0} was parsed, but not handled'.format(
+                                groupset['settings']['scheme']
+                            ))
+                    else:
+                        raise RuntimeError('Unknown groupset type: {0}, expected: ("lrc", )'.format(groupset['type']))
 
                 if namespace not in storage.namespaces:
                     ns = storage.namespaces.add(namespace)
@@ -1017,12 +1074,20 @@ class Balancer(object):
                                     self.node,
                                     couple=couple,
                                     groupset=couple_groupset,
+                                    # TODO make function, which will generate this settings, since
+                                    # currently scheme from settings is not used and filled in storage.Lrc822v1Groupset
                                     settings={
                                         'part_size': groupset['settings']['part_size'],
                                         'scheme': storage.Lrc.Scheme822v1.ID,
                                     }
                                 )
                                 couple_groupset.couple = couple
+                            else:
+                                raise RuntimeError(
+                                    'Internal logic error: metakey for couple_groupset {0} was not written'.format(
+                                        couple_groupset
+                                    )
+                                )
                             for group in couple_groupset.groups:
                                 self.infrastructure.update_group_history(group)
 
@@ -1055,10 +1120,13 @@ class Balancer(object):
 
             candidate = self.__choose_groups(
                 ns_current_state, units, count - len(mandatory_groups),
-                free_group_ids, self.NODE_TYPES, mandatory_groups)
-            candidate += mandatory_groups
-            if len(candidate) == count:
-                candidates.append(candidate)
+                free_group_ids, self.NODE_TYPES, mandatory_groups
+            )
+            if len(candidate) != count - len(mandatory_groups):
+                continue
+
+            candidate.extend(mandatory_groups)
+            candidates.append(candidate)
 
         if not candidates:
             return None
@@ -1654,7 +1722,8 @@ def consistent_write(session, key, data, retries=3, rollback_on_error=True):
     groups = set(s.groups)
 
     logger.debug('Performing consistent write of key {0} to groups {1}'.format(
-        key_esc, list(groups)))
+        key_esc, list(groups)
+    ))
 
     suc_groups, failed_groups = h.write_retry(s, key, data, retries=retries)
 
@@ -1671,10 +1740,12 @@ def consistent_write(session, key, data, retries=3, rollback_on_error=True):
 
             if left_groups:
                 logger.error('Failed to remove key {0} from groups {1}'.format(
-                    key_esc, list(left_groups)))
+                    key_esc, list(left_groups)
+                ))
             else:
                 logger.info('Successfully removed key {0} from groups {1}'.format(
-                    key_esc, list(suc_groups)))
+                    key_esc, list(suc_groups)
+                ))
 
         raise RuntimeError(
             'Failed to write key to groups: {f_groups}, '
@@ -1711,7 +1782,7 @@ def get_unsuitable_uncoupled_group_ids(node_info_updater, group_ids):
             groups=[storage.groups[group_id] for group_id in group_ids]
         )
     except Exception as e:
-        logger.exception('Failed to update uncoupled groups status')
+        logger.exception('Failed to update uncoupled groups status: {}'.format(e))
         raise
 
     unsuitable_group_ids = []

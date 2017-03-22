@@ -154,13 +154,14 @@ class TreePicker(object):
         path_weight_added = [leaf.depth]
         updated_leaf_path_nodes = set()
 
-        def update_children_weights(node):
+        def update_children_weights(node, path_weight_added):
 
             nodes = [node]
             node_children_iterators = [iter(node.children)]
 
             while node_children_iterators:
                 cur_node_children_iterator = node_children_iterators[-1]
+
                 try:
                     next_child = next(cur_node_children_iterator)
                 except StopIteration:
@@ -168,13 +169,14 @@ class TreePicker(object):
                     node_children_iterators.pop()
                     if isinstance(cur_node, TreePicker.LeafNode):
                         cur_node.path_weight += path_weight_added[0]
-                    if not nodes:
-                        path_weight_added[0] -= 1
-                        updated_leaf_path_nodes.add(node)
                     continue
+
                 if next_child not in updated_leaf_path_nodes:
                     nodes.append(next_child)
                     node_children_iterators.append(iter(next_child.children))
+
+            path_weight_added[0] -= 1
+            updated_leaf_path_nodes.add(node)
 
         # path weights in a tree is updated in a bottom-top way:
         # - subtree of node 'leaf' is updated (just 'leaf' itself);
@@ -183,7 +185,7 @@ class TreePicker(object):
         # On each step processed leaves are added to 'updated_leaf_path_nodes'
         # to skip their processing on next step.
         while parent is not self._root:
-            update_children_weights(parent)
+            update_children_weights(parent, path_weight_added)
             parent = parent.parent
 
         self._leaves.sort()

@@ -377,7 +377,7 @@ class ResourceError(KeyError):
         return str(self.args[0])
 
 
-class Repositary(object):
+class Repository(object):
     def __init__(self, constructor, resource_desc=None):
         self.elements = {}
         self.constructor = constructor
@@ -411,7 +411,7 @@ class Repositary(object):
         return self.elements.__iter__()
 
     def __repr__(self):
-        return '<Repositary object: [%s] >' % (', '.join((repr(e) for e in self.elements.itervalues())))
+        return '<Repository object: [%s] >' % (', '.join((repr(e) for e in self.elements.itervalues())))
 
     def keys(self):
         return self.elements.keys()
@@ -424,6 +424,9 @@ class Repositary(object):
 
     def itervalues(self):
         return self.elements.itervalues()
+
+    def iteritems(self):
+        return self.elements.iteritems()
 
     def __len__(self):
         return len(self.elements)
@@ -812,8 +815,8 @@ class NodeBackendStat(object):
         self.node_stat = node_stat
         self.ts = None
 
-        self.free_space, self.total_space, self.used_space = 0, 0, 0
-        self.vfs_free_space, self.vfs_total_space, self.vfs_used_space = 0, 0, 0
+        self.free_space, self.total_space, self.used_space = 0, 0, 0  # in bytes
+        self.vfs_free_space, self.vfs_total_space, self.vfs_used_space = 0, 0, 0  # in bytes
 
         self.commands_stat = CommandsStat()
 
@@ -1368,6 +1371,7 @@ class NodeBackend(object):
 
         self.node = node
         self.backend_id = backend_id
+        # self.fs can be None (if NodeBackend is not enabled)
         self.fs = None
         self.group = None
 
@@ -2088,6 +2092,9 @@ class Groupset(object):
     def _calculate_status(self):
         raise NotImplemented('Method should be implemented in a derived class')
 
+    def compose_group_meta(self, couple, settings):
+        raise NotImplemented('Method should be implemented in a derived class')
+
     def _get_meta_unavailable_status(self):
         for group in self.groups:
             if not group.meta:
@@ -2458,6 +2465,9 @@ class Couple(Groupset):
         self.couple = self
 
         self._settings = self.DEFAULT_SETTINGS
+        # currently it is duplicate of the cache in Groupset,
+        # but after we separate Couple and ReplicaGroupset it will be needed
+        self._cache = {}
 
     @property
     def settings(self):
@@ -2907,10 +2917,9 @@ class Lrc822v1Groupset(Groupset):
 
     @property
     def groups_effective_space(self):
-        return sum(
-            g.effective_space
-            for g in self.groups[:Lrc.Scheme822v1.NUM_DATA_PARTS]
-        )
+        return min(
+            g.effective_space for g in self.groups
+        ) * Lrc.Scheme822v1.NUM_DATA_PARTS
 
     @property
     def ns_reserved_space_percentage(self):
@@ -2928,10 +2937,9 @@ class Lrc822v1Groupset(Groupset):
     @property
     @_cached('effective_free_space')
     def effective_free_space(self):
-        return sum(
-            g.effective_free_space
-            for g in self.groups[:Lrc.Scheme822v1.NUM_DATA_PARTS]
-        )
+        return min(
+            g.effective_free_space for g in self.groups
+        ) * Lrc.Scheme822v1.NUM_DATA_PARTS
 
 
 class DcNodes(object):
@@ -2981,11 +2989,10 @@ class Namespace(object):
 
     def __init__(self, id):
         self.id = id
-        self.couples = set()
 
         self.groupsets = Groupsets(
-            replicas=Repositary(Couple, 'Replicas groupset'),
-            lrc=Repositary(Lrc822v1Groupset, 'LRC groupset'),
+            replicas=Repository(Couple, 'Replicas groupset'),
+            lrc=Repository(Lrc822v1Groupset, 'LRC groupset'),
             resource_desc='Groupset',
         )
 
@@ -3044,23 +3051,23 @@ class Namespace(object):
         return '<Namespace: id={id} >'.format(id=self.id)
 
 
-hosts = Repositary(Host)
-groups = Repositary(Group)
-nodes = Repositary(Node)
-node_backends = Repositary(NodeBackend, 'Node backend')
-namespaces = Repositary(Namespace)
-fs = Repositary(Fs)
+hosts = Repository(Host)
+groups = Repository(Group)
+nodes = Repository(Node)
+node_backends = Repository(NodeBackend, 'Node backend')
+namespaces = Repository(Namespace)
+fs = Repository(Fs)
 
 dc_host_view = DcHostView()
 
-replicas_groupsets = Repositary(Couple, 'Replicas groupset')
+replicas_groupsets = Repository(Couple, 'Replicas groupset')
 
 # TOOD: use namespace "storage_cache" couples instead of cache couples,
 # this is added for backward compatibility
 cache_ns = namespaces.add(Group.CACHE_NAMESPACE)
 cache_couples = cache_ns.groupsets.replicas
 
-lrc_groupsets = Repositary(Lrc822v1Groupset, 'LRC groupset')
+lrc_groupsets = Repository(Lrc822v1Groupset, 'LRC groupset')
 groupsets = Groupsets(
     replicas=replicas_groupsets,
     lrc=lrc_groupsets,

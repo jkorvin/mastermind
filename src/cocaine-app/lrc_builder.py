@@ -268,9 +268,9 @@ class LRC_8_2_2_V1_Builder(object):
 
             def _pick_groups_from_dc(dc, picker, count):
                 groups_ids = list(
-                    itertools.islice(picker, self.GROUPS_PER_DC)
+                    itertools.islice(picker, count)
                 )
-                if len(groups_ids) != self.GROUPS_PER_DC:
+                if len(groups_ids) != count:
                     # not enough groups are left in the tree
                     logger.debug(
                         'Dc {dc}: does not have '
@@ -384,6 +384,7 @@ class LRC_8_2_2_V1_Builder(object):
                 )
                 # continue selection with another total space uncoupled groups
                 continue
+        raise StopIteration
 
     def _make_tree_picker(self, subtree):
         """ Make a TreePicker object based on dc cluster subtree.

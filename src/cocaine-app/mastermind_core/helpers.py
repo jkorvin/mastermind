@@ -73,7 +73,7 @@ def convert_config_bytes_value(value):
         return value
 
     if not value:
-        raise ValueError(format_error_msg)
+        raise ValueError(format_error_msg.format(value))
 
     if value[-1].upper() in CONFIG_BYTES_UNITS:
         bytes_part, suffix = value[:-1], value[-1].upper()
@@ -83,7 +83,7 @@ def convert_config_bytes_value(value):
     try:
         bytes_value = int(bytes_part)
     except ValueError:
-        raise ValueError(format_error_msg)
+        raise ValueError(format_error_msg.format(bytes_part))
 
     if suffix == 'K':
         return bytes_value * (1024 ** 1)

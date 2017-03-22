@@ -153,6 +153,9 @@ class NodeInfoUpdater(object):
                                elliptics.monitor_stat_categories.commands)
 
     def update_status(self, groups):
+        """Update all storage state if group is None or
+        update the part of storage state which is related to specified groups.
+        """
         if groups is not None and len(groups) == 0:
             # otherwise empty groups list is treated as complete cluster update
             return
