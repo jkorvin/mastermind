@@ -1,3 +1,5 @@
+import re
+
 from mastermind_core.namespaces.settings.object import SettingsObject
 from mastermind_core.namespaces.settings.redirect import RedirectSettings
 from mastermind_core.namespaces.settings.signature import SignatureSettings
@@ -27,6 +29,7 @@ class NamespaceSettings(SettingsObject):
     FEATURES = 'features'
     ATTRIBUTES = 'attributes'
     OWNER = 'owner'
+    SPACE_LIMIT = 'space-limit'
 
     VALID_SETTING_KEYS = set([
         __SERVICE,
@@ -44,6 +47,7 @@ class NamespaceSettings(SettingsObject):
         FEATURES,
         ATTRIBUTES,
         OWNER,
+        SPACE_LIMIT,
     ])
 
     SUCCESS_COPIES_ANY = 'any'
@@ -122,6 +126,14 @@ class NamespaceSettings(SettingsObject):
         self._settings[self.MIN_UNITS] = value
 
     @SettingsObject.settings_property
+    def space_limit(self):
+        return self._settings.get(self.SPACE_LIMIT)
+
+    @space_limit.setter
+    def space_limit(self, value):
+        self._settings[self.SPACE_LIMIT] = value
+
+    @SettingsObject.settings_property
     def add_units(self):
         return self._settings.get(self.ADD_UNITS)
 
@@ -169,6 +181,18 @@ class NamespaceSettings(SettingsObject):
     def check_for_update(self, value):
         self._settings[self.CHECK_FOR_UPDATE] = value
 
+    SIZE_UNITS_RE = re.compile('^(\d+)(?:[TGMK])$')
+
+    @staticmethod
+    def _validate_size_units(time_units):
+        match = NamespaceSettings.SIZE_UNITS_RE.match(time_units)
+        if match is None:
+            return False
+        size_units_num_val = int(match.group(1))
+        if size_units_num_val <= 0:
+            return False
+        return True
+
     def _validate_first_level_settings(self):
         if self.GROUPS_COUNT not in self._settings:
             if self.STATIC_COUPLE not in self._settings:
@@ -212,6 +236,14 @@ class NamespaceSettings(SettingsObject):
             if self._settings[self.MIN_UNITS] < 0:
                 raise ValueError(
                     'Namespace "{}": min units should be a non-negative integer'.format(
+                        self.namespace
+                    )
+                )
+
+        if self.SPACE_LIMIT in self._settings:
+            if not self._validate_size_units(self._settings[self.SPACE_LIMIT]):
+                raise ValueError(
+                    'Namespace "{}": space limit should be a non-negative integer'.format(
                         self.namespace
                     )
                 )

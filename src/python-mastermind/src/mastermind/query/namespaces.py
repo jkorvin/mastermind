@@ -78,6 +78,7 @@ class NamespacesQuery(Query):
               attributes_symlink_scope_limit=None,
               attributes_metadata=None,
               owner_id=None,
+              space_limit=None,
     ):
         """Performs initial namespace setup.
 
@@ -144,6 +145,13 @@ class NamespacesQuery(Query):
           attributes_metadata: this flag toggles the client's ability to store key's custom
             metadata in key's attributes.
           owner_id: namespace owner integer identification number. ABC should know a service with this id.
+          space_limit: sets maximum total space for the current namespace.
+            Accepts a string with positive integer value with one of the following postfixes:
+                T - tebibyte;
+                G - gibibyte;
+                M - mebibyte;
+                K - kibibyte.
+            Examples: 1T, 1024G, 1048576M, 1073741824K.
 
         Returns:
           Namespace object representing created namespace.
@@ -251,6 +259,9 @@ class NamespacesQuery(Query):
 
         if owner:
             settings['owner'] = owner
+
+        if space_limit:
+            settings['space-limit'] = space_limit
 
         ns_data = self.client.request('namespace_setup', [namespace, True, settings, {}])
 

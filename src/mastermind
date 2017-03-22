@@ -1071,6 +1071,13 @@ def ns_setup(namespace,
                  '',
                  "Namespace owner integer identification number. ABC should know a service with this id."
              ),
+             space_limit=(
+                 '',
+                 '',
+                 "Sets maximum total space for the current namespace. Accepts a string with positive integer value "
+                 "with one of the following postfixes: T(tebibyte), G(gibibyte), M(mebibyte), K(kibibyte). "
+                 "Examples: 1T, 1024G, 1048576M, 1073741824K.",
+             ),
              json=('', None, 'Format output as json'),
              host=None, app=None):
 
@@ -1143,6 +1150,7 @@ def ns_setup(namespace,
                 if owner_id else
                 None
             ),
+            space_limit=space_limit,
         )
 
         # attributes_ttl should not be passed if not set so that default value stays None
@@ -1281,6 +1289,9 @@ def ns_setup(namespace,
 
         if owner_id:
             settings.setdefault('owner', {})['id'] = int(owner_id)
+
+        if space_limit:
+            settings['space-limit'] = space_limit
 
         if overwrite:
             ns.settings = settings
