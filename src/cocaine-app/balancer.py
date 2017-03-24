@@ -697,6 +697,16 @@ class Balancer(object):
                 finally:
                     self._remove_unusable_groups(groups_by_total_space, uncoupled_groups)
 
+    @staticmethod
+    def _group_space_is_allowed(group_id, allowed_space):
+        return (
+            allowed_space is None
+            or
+            storage.groups[group_id].effective_space < allowed_space * (
+                1 + config.get('total_space_diff_tolerance', 0.05)
+            )
+        )
+
     def __couple_groups(self, size, couples, options, ns, groups_by_total_space):
 
         res = []
@@ -720,6 +730,14 @@ class Balancer(object):
             res.extend([str(e)] * (couples - len(res)))
             return res
 
+        ns_settings = self.namespaces_settings.get(ns)
+        if ns_settings.space_limit:
+            allowed_space = convert_config_bytes_value(ns_settings.space_limit)
+            for couple in storage.namespaces[ns].couples:
+                allowed_space -= couple.effective_space
+        else:
+            allowed_space = None
+
         for _, mandatory_groups in itertools.izip_longest(
                 xrange(couples), options['mandatory_groups'][:couples]):
 
@@ -740,6 +758,14 @@ class Balancer(object):
                             'is unsuitable in some other way'.format(m_group)
                         )
 
+                    if not self._group_space_is_allowed(m_group, allowed_space):
+                        raise ValueError(
+                            'Mandatory group {0} has effective space more than allowed by ns settings: '
+                            'group space {1}, allowed {2} (None := +inf)'.format(
+                                m_group, storage.groups[m_group].effective_space, allowed_space
+                            )
+                        )
+
                 if mandatory_groups:
                     self.infrastructure.account_ns_groups(
                         nodes, [storage.groups[g] for g in mandatory_groups]
@@ -753,6 +779,7 @@ class Balancer(object):
                 couple = self._build_couple(
                     ns_current_state, units, size,
                     groups_by_total_space, mandatory_groups,
+                    allowed_space=allowed_space,
                     namespace=options['namespace'],
                     init_state=options['init_state'],
                     groupsets=options['groupsets'],
@@ -763,6 +790,8 @@ class Balancer(object):
                 self.infrastructure.update_groups_list(tree)
 
                 created_couples.append(couple)
+                if allowed_space is not None:
+                    allowed_space -= couple.effective_space
 
                 res.append(couple.info_data())
             except Exception as e:
@@ -936,10 +965,12 @@ class Balancer(object):
                       size,
                       groups_by_total_space,
                       mandatory_groups,
+                      allowed_space,
                       namespace,
                       init_state,
                       groupsets,
-                      dry_run=False):
+                      dry_run=False,
+    ):
         """
         Build couple from
         :param ns_current_state:
@@ -956,7 +987,7 @@ class Balancer(object):
 
         while True:
             groups_to_couple = self.__choose_groups_to_couple(
-                ns_current_state, units, size, groups_by_total_space, mandatory_groups
+                ns_current_state, units, size, groups_by_total_space, mandatory_groups, allowed_space
             )
 
             if not groups_to_couple:
@@ -1108,7 +1139,8 @@ class Balancer(object):
             return couple
 
     def __choose_groups_to_couple(self, ns_current_state, units, count,
-                                  groups_by_total_space, mandatory_groups):
+                                  groups_by_total_space, mandatory_groups,
+                                  allowed_space):
         candidates = []
         for ts, group_ids in groups_by_total_space.iteritems():
             if not all(mg in group_ids for mg in mandatory_groups):
@@ -1116,7 +1148,13 @@ class Balancer(object):
                              'of groups with ts {1}'.format(mandatory_groups, ts))
                 continue
 
-            free_group_ids = [g for g in group_ids if g not in mandatory_groups]
+            free_group_ids = [
+                g for g in group_ids
+                if
+                g not in mandatory_groups
+                and
+                self._group_space_is_allowed(g, allowed_space)
+            ]
 
             candidate = self.__choose_groups(
                 ns_current_state, units, count - len(mandatory_groups),

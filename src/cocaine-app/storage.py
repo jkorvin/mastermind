@@ -2685,6 +2685,32 @@ class Couple(Groupset):
     def couple_id(self):
         return int(str(self).split(':')[0])
 
+    @property
+    def effective_space(self):
+        candidates = []
+        # TODO when couple and replicas_groupset will be different classes
+        # check as self.couple (or self.replicas_groupset)
+        if self.couple.groups:
+            # TODO when couple and replicas_groupset will be different classes
+            # use as self.couple.effective_space (or self.replicas_groupset.effective_space)
+            candidates.append(super(Couple, self).effective_space)
+        if self.lrc822v1_groupset:
+            candidates.append(self.lrc822v1_groupset.effective_space)
+        return min(candidates)
+
+    @property
+    def effective_free_space(self):
+        candidates = []
+        # TODO when couple and replicas_groupset will be different classes
+        # check as self.couple (or self.replicas_groupset)
+        if self.couple.groups:
+            # TODO when couple and replicas_groupset will be different classes
+            # use as self.couple.effective_free_space (or self.replicas_groupset.effective_free_space)
+            candidates.append(super(Couple, self).effective_free_space)
+        if self.lrc822v1_groupset:
+            candidates.append(self.lrc822v1_groupset.effective_free_space)
+        return min(candidates)
+
 
 class Lrc822v1Groupset(Groupset):
     def __init__(self, groups):
