@@ -10,13 +10,6 @@ from job_types import JobTypes
 from tasks import NodeBackendDefragTask, CoupleDefragStateCheckTask, RecoverGroupDcTask
 import storage
 from sync import sync_manager
-from sync.error import (
-    LockError,
-    LockFailedError,
-    LockAlreadyAcquiredError,
-    InconsistentLockError,
-    API_ERROR_CODE
-)
 
 
 logger = logging.getLogger('mm.jobs')
@@ -26,7 +19,7 @@ class RecoverDcJob(Job):
 
     PARAMS = ('group', 'couple',
               'resources',
-              'keys', 'host', 'port', 'family', 'backend_id' # read-only parameters
+              'keys', 'host', 'port', 'family', 'backend_id'  # read-only parameters
              )
 
     def __init__(self, **kwargs):
@@ -84,10 +77,8 @@ class RecoverDcJob(Job):
 
     def create_tasks(self, processor):
 
-        if not self.couple in storage.replicas_groupsets:
+        if self.couple not in storage.replicas_groupsets:
             raise JobBrokenError('Couple {0} is not found'.format(self.couple))
-
-        couple = storage.replicas_groupsets[self.couple]
 
         group = storage.groups[self.group]
 
@@ -115,7 +106,6 @@ class RecoverDcJob(Job):
             host=self.host,
             cmd=recover_cmd,
             json_stats=True,
-            tmp_dir=tmp_dir,
             params={
                 'node_backend': self.node_backend(
                     host=self.host,
@@ -160,7 +150,6 @@ class RecoverDcJob(Job):
         couple = group.couple
 
         return [str(couple)]
-
 
     @staticmethod
     def report_resources(params):
